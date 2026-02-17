@@ -1,0 +1,38 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            // admin | employee
+            $table->enum('user_type', ['admin', 'employee'])
+                ->default('employee')
+                ->after('email');
+
+            $table->boolean('is_active')
+                ->default(true)
+                ->after('user_type');
+
+            $table->index(['user_type', 'is_active']);
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropIndex(['user_type', 'is_active']);
+            $table->dropColumn(['user_type', 'is_active']);
+        });
+    }
+};
