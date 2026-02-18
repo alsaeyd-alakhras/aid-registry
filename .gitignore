@@ -21,5 +21,8 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
-/database/migrations/2025_07_06_112948_create_accounts_table.php
-/app/Models/Account.php
+
+/plans
+plans/task-new.md
+
+plans/task-new.md

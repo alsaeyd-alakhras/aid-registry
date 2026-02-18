@@ -3,14 +3,18 @@
 namespace App\Providers;
 
 use App\Models\Allocation;
+use App\Models\AidDistribution;
 use App\Models\Constant;
 use App\Models\Currency;
 use App\Models\Executive;
+use App\Models\Office;
 use App\Models\User;
 use App\Observers\AllocationObserver;
+use App\Observers\AidDistributionObserver;
 use App\Observers\ConstantObserver;
 use App\Observers\CurrencyObserver;
 use App\Observers\ExecutiveObserver;
+use App\Observers\OfficeObserver;
 use App\Observers\UserObserver;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Gate;
@@ -84,7 +88,7 @@ class AppServiceProvider extends ServiceProvider
         User::observe(UserObserver::class);
         Constant::observe(ConstantObserver::class);
         Currency::observe(CurrencyObserver::class);
-        Allocation::observe(AllocationObserver::class);
-        Executive::observe(ExecutiveObserver::class);
+        Office::observe(OfficeObserver::class);
+        AidDistribution::observe(AidDistributionObserver::class);
     }
 }

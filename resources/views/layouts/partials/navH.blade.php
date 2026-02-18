@@ -1,7 +1,7 @@
 <nav class="layout-navbar navbar navbar-expand-xl align-items-center bg-navbar-theme" id="layout-navbar">
     <div class="container-xxl">
         <div class="py-0 navbar-brand app-brand demo d-none d-xl-flex me-4" style="overflow: visible;">
-            <a href="{{ route('dashboard.home') }}" class="app-brand-link" style="overflow: visible;">
+            <a href="https://alsaeyd-alakhras.vercel.app/ar" target="_blank" class="app-brand-link" style="overflow: visible;">
                 <span class="app-brand-logo demo" style="overflow: visible; width: 100px !important;">
                     <img src=" {{ asset('imgs/logo-brand.png') }}" alt="Logo" width="100">
                 </span>

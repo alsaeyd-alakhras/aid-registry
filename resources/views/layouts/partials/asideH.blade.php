@@ -1,12 +1,12 @@
 <aside id="layout-menu" class="flex-grow-0 layout-menu-horizontal menu-horizontal menu bg-menu-theme">
     <div class="container-xxl d-flex h-100">
         <ul class="pb-2 menu-inner pb-xl-0">
-            {{-- <li class="menu-item {{ request()->is('/') ? 'active' : '' }}">
+            <li class="menu-item {{ request()->is('/') ? 'active' : '' }}">
                 <a href="{{ route('dashboard.home') }}" class="menu-link">
                     <i class="fa-solid fa-house me-2"></i>
                     <div data-i18n="home">الرئيسية</div>
                 </a>
-            </li> --}}
+            </li>
             {{-- @can('view','App\\Models\AccreditationProject')
             <li class="menu-item {{ request()->is('accreditations/*') || request()->is('accreditations') ? 'active' : '' }}">
                 <a href="#" class="menu-link">

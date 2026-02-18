@@ -92,15 +92,9 @@ class AidDistributionController extends Controller
 
         DB::beginTransaction();
         try {
-            $family = Family::query()->where('national_id', $validated['national_id'])->first();
-            $familyData = $this->extractFamilyData($validated);
+            $family = $this->resolveFamilyForDistribution($validated);
 
-            if ($family) {
-                $family->update($familyData);
-            } else {
-                $family = Family::create($familyData);
-            }
-
+            // إنشاء عملية الصرف
             AidDistribution::create([
                 'family_id' => $family->id,
                 'office_id' => $validated['office_id'],
@@ -121,6 +115,48 @@ class AidDistributionController extends Controller
         }
 
         return redirect()->route('dashboard.aid-distributions.index')->with('success', 'تم حفظ عملية المساعدة بنجاح');
+    }
+
+    /**
+     * تحديد الأسرة المناسبة بناءً على منطق البحث والـ resolution_mode
+     */
+    private function resolveFamilyForDistribution(array $validated): Family
+    {
+        $nationalId = $validated['national_id'];
+        $resolutionMode = $validated['resolution_mode'] ?? null;
+
+        // البحث عن تطابق
+        $primaryMatch = Family::query()->where('national_id', $nationalId)->first();
+        $spouseMatch = Family::query()->where('spouse_national_id', $nationalId)->first();
+
+        // الحالة 1: primary_match
+        if ($primaryMatch) {
+            // تحديث طبيعي
+            $primaryMatch->update($this->extractFamilyData($validated));
+            return $primaryMatch;
+        }
+
+        // الحالة 2: spouse_match
+        if ($spouseMatch) {
+            // يجب أن يكون resolution_mode موجود
+            if (!$resolutionMode) {
+                throw new \Exception('يجب اختيار طريقة التعامل مع الأسرة الموجودة');
+            }
+
+            if ($resolutionMode === 'attach_to_existing') {
+                // إضافة المساعدة للأسرة القديمة فقط (بدون تحديث)
+                return $spouseMatch;
+            }
+
+            if ($resolutionMode === 'create_new_family') {
+                // إنشاء أسرة جديدة
+                return Family::create($this->extractFamilyData($validated));
+            }
+        }
+
+        // الحالة 3: no_match
+        // إنشاء أسرة جديدة
+        return Family::create($this->extractFamilyData($validated));
     }
 
     public function edit(AidDistribution $aidDistribution)
@@ -222,6 +258,8 @@ class AidDistributionController extends Controller
     private function validateForm(Request $request): array
     {
         return $request->validate([
+            'family_id' => 'nullable|exists:families,id',
+            'resolution_mode' => 'nullable|in:attach_to_existing,create_new_family',
             'primary_name' => 'required|string|max:255',
             'national_id' => 'required|string|max:20',
             'mobile' => 'nullable|string|max:20',
@@ -347,5 +385,128 @@ class AidDistributionController extends Controller
             'widowed' => 'ارمل/ة',
             default => '-',
         };
+    }
+
+    /**
+     * API: Search for family by national ID (primary or spouse)
+     */
+    public function searchByNationalId(string $id)
+    {
+        // البحث في العمودين: national_id أو spouse_national_id
+        $primaryMatch = Family::query()->where('national_id', $id)->first();
+        $spouseMatch = Family::query()->where('spouse_national_id', $id)->first();
+
+        // تحديد نوع التطابق
+        if ($primaryMatch) {
+            $family = $primaryMatch;
+            $matchType = 'primary_match';
+        } elseif ($spouseMatch) {
+            $family = $spouseMatch;
+            $matchType = 'spouse_match';
+        } else {
+            return response()->json(['match_type' => 'no_match']);
+        }
+
+        // جلب آخر 10 مساعدات (status=active فقط)
+        $aids = $family->distributions()
+            ->with(['office', 'aidItem'])
+            ->where('status', 'active')
+            ->orderBy('distributed_at', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function (AidDistribution $dist) {
+                return [
+                    'id' => $dist->id,
+                    'office_name' => $dist->office?->name ?? '-',
+                    'distributed_at' => $dist->distributed_at?->format('Y-m-d') ?? '-',
+                    'aid_mode' => $dist->aid_mode === 'cash' ? 'نقدية' : 'عينية',
+                    'aid_value' => $dist->aid_mode === 'cash'
+                        ? number_format($dist->cash_amount, 2) . ' ₪'
+                        : ($dist->aidItem?->name ?? '-'),
+                ];
+            });
+
+        // إجمالي عدد المساعدات
+        $aidsTotal = $family->distributions()->where('status', 'active')->count();
+
+        return response()->json([
+            'match_type' => $matchType,
+            'family' => [
+                'id' => $family->id,
+                'national_id' => $family->national_id,
+                'full_name' => $family->full_name,
+                'phone' => $family->phone,
+                'family_members_count' => $family->family_members_count,
+                'address' => $family->address,
+                'marital_status' => $family->marital_status,
+                'spouse_national_id' => $family->spouse_national_id,
+                'spouse_full_name' => $family->spouse_full_name,
+            ],
+            'last_10_aids' => $aids,
+            'total_aids' => $aidsTotal,
+        ]);
+    }
+
+    /**
+     * API: Get all aids for a family (for lazy load)
+     */
+    public function getAllAids(int $familyId)
+    {
+        $family = Family::findOrFail($familyId);
+
+        $aids = $family->distributions()
+            ->with(['office', 'aidItem'])
+            ->where('status', 'active')
+            ->orderBy('distributed_at', 'desc')
+            ->get()
+            ->map(function (AidDistribution $dist) {
+                return [
+                    'id' => $dist->id,
+                    'office_name' => $dist->office?->name ?? '-',
+                    'distributed_at' => $dist->distributed_at?->format('Y-m-d') ?? '-',
+                    'aid_mode' => $dist->aid_mode === 'cash' ? 'نقدية' : 'عينية',
+                    'aid_value' => $dist->aid_mode === 'cash'
+                        ? number_format($dist->cash_amount, 2) . ' ₪'
+                        : ($dist->aidItem?->name ?? '-'),
+                ];
+            });
+
+        return response()->json([
+            'aids' => $aids,
+            'total' => $aids->count(),
+        ]);
+    }
+
+    /**
+     * API: Show single aid distribution details for modal
+     */
+    public function showAidDistribution(int $id)
+    {
+        $distribution = AidDistribution::with(['family', 'office', 'aidItem', 'creator'])
+            ->findOrFail($id);
+
+        return response()->json([
+            'distribution' => [
+                'id' => $distribution->id,
+                'office_name' => $distribution->office?->name ?? '-',
+                'aid_mode' => $distribution->aid_mode === 'cash' ? 'نقدية' : 'عينية',
+                'cash_amount' => $distribution->cash_amount,
+                'aid_item_name' => $distribution->aidItem?->name ?? '-',
+                'distributed_at' => $distribution->distributed_at?->format('Y-m-d') ?? '-',
+                'notes' => $distribution->notes,
+                'status' => $distribution->status,
+                'creator_name' => $distribution->creator?->name ?? '-',
+            ],
+            'family' => [
+                'full_name' => $distribution->family?->full_name ?? '-',
+                'national_id' => $distribution->family?->national_id ?? '-',
+                'phone' => $distribution->family?->phone ?? '-',
+                'family_members_count' => $distribution->family?->family_members_count ?? '-',
+                'address' => $distribution->family?->address ?? '-',
+                'marital_status' => $this->translateMaritalStatus($distribution->family?->marital_status),
+                'spouse_full_name' => $distribution->family?->spouse_full_name ?? '-',
+                'spouse_national_id' => $distribution->family?->spouse_national_id ?? '-',
+            ],
+        ]);
     }
 }

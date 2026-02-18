@@ -74,5 +74,12 @@ Route::group([
         'aid-items' => AidItemController::class,
         'aid-distributions' => AidDistributionController::class,
     ]);
+
+    // API Routes for AJAX requests
+    Route::prefix('api')->group(function () {
+        Route::get('families/search-by-national-id/{id}', [AidDistributionController::class, 'searchByNationalId'])->name('api.families.search');
+        Route::get('aid-distributions/{id}', [AidDistributionController::class, 'showAidDistribution'])->name('api.aid-distributions.show');
+        Route::get('families/{familyId}/all-aids', [AidDistributionController::class, 'getAllAids'])->name('api.families.all-aids');
+    });
     /* ********************************************************** */
 });
