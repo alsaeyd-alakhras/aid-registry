@@ -245,9 +245,9 @@
             const urlUpdate = `{{ route('dashboard.aid-distributions.update', ':id') }}`;
             const urlDelete = `{{ route('dashboard.aid-distributions.destroy', ':id') }}`;
 
-            const abilityCreate = "{{ Auth::user()->can('create', 'App\\Models\\Allocation') }}";
-            const abilityEdit = "{{ Auth::user()->can('update', 'App\\Models\\Allocation') }}";
-            const abilityDelete = "{{ Auth::user()->can('delete', 'App\\Models\\Allocation') }}";
+            const abilityCreate = "{{ Auth::user()->can('create', 'App\\Models\\AidDistribution') }}";
+            const abilityEdit = "{{ Auth::user()->can('update', 'App\\Models\\AidDistribution') }}";
+            const abilityDelete = "{{ Auth::user()->can('delete', 'App\\Models\\AidDistribution') }}";
 
             const fields = [
                 '#',

@@ -53,8 +53,8 @@
                         <select class="text-center form-select" name="user_type" id="user_type"
                             data-placeholder="اختر شعبة">
                             <option value="" label="فتح القائمة">
-                            <option value="employee" @selected($user->office_id == 'employee')>الموظف</option>
-                            <option value="admin" @selected($user->office_id == 'admin')>المدير</option>
+                            <option value="employee" @selected($user->user_type == 'employee')>الموظف</option>
+                            <option value="admin" @selected($user->user_type == 'admin')>المدير</option>
                         </select>
                     </div>
                     <div class="mb-4 form-group col-md-4">
@@ -137,6 +137,9 @@
         <script src="{{ asset('assets/js/pages-account-settings-account.js') }}"></script>
         <script>
             $(document).ready(function () {
+                const isCreateUserForm = @json(!isset($btn_label));
+                const employeeDefaultAbilities = ['aiddistributions.view', 'aiddistributions.create', 'aiddistributions.update'];
+
                 // عند تغيير حالة Master Checkbox
                 $('.master-checkbox').on('change', function () {
                     // الحصول على المجموعة المرتبطة بـ Master Checkbox
@@ -145,6 +148,31 @@
                     // تحديد/إلغاء تحديد جميع الخيارات الفرعية
                     $(`.${targetClass}`).prop('checked', $(this).prop('checked'));
                 });
+
+                function syncMasterCheckboxes() {
+                    $('.master-checkbox').each(function () {
+                        const targetClass = $(this).data('target');
+                        const $children = $(`.${targetClass}`);
+                        const allChecked = $children.length > 0 && $children.filter(':checked').length === $children.length;
+                        $(this).prop('checked', allChecked);
+                    });
+                }
+
+                function applyEmployeeDefaultAbilitiesOnCreate() {
+                    if (!isCreateUserForm || $('#user_type').val() !== 'employee') {
+                        return;
+                    }
+
+                    $('input[name="abilities[]"]').each(function () {
+                        const role = $(this).val();
+                        if (employeeDefaultAbilities.includes(role)) {
+                            $(this).prop('checked', true);
+                        }
+                    });
+
+                    syncMasterCheckboxes();
+                }
+
                 $('#user_type').on('change', function () {
                     const userType = $(this).val();
                     if (userType != 'employee') {
@@ -152,7 +180,9 @@
                     } else {
                         $('#office').prop('disabled', false);
                     }
+                    applyEmployeeDefaultAbilitiesOnCreate();
                 });
+
                 $('#user_type').trigger('change');
             });
 

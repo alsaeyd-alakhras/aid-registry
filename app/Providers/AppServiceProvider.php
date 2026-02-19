@@ -2,20 +2,19 @@
 
 namespace App\Providers;
 
-use App\Models\Allocation;
 use App\Models\AidDistribution;
 use App\Models\Constant;
 use App\Models\Currency;
 use App\Models\Executive;
 use App\Models\Office;
 use App\Models\User;
-use App\Observers\AllocationObserver;
 use App\Observers\AidDistributionObserver;
 use App\Observers\ConstantObserver;
 use App\Observers\CurrencyObserver;
 use App\Observers\ExecutiveObserver;
 use App\Observers\OfficeObserver;
 use App\Observers\UserObserver;
+use App\Policies\AidDistributionPolicy;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -79,7 +78,7 @@ class AppServiceProvider extends ServiceProvider
                 return false;
             }
         });
-        // Gate::policy(ReceivablesLoans::class, ReceivablesLoansPolicy::class);
+        Gate::policy(AidDistribution::class, AidDistributionPolicy::class);
 
 
 

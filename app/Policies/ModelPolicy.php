@@ -6,6 +6,12 @@ use App\Models\User;
 use Illuminate\Support\Str;
 class ModelPolicy
 {
+    private const EMPLOYEE_ALLOWED_ABILITIES = [
+        'aiddistributions.view',
+        'aiddistributions.create',
+        'aiddistributions.update',
+    ];
+
     /**
      * Create a new policy instance.
      */
@@ -24,6 +30,13 @@ class ModelPolicy
         $ability = $class_name . '.' . Str::kebab($name);
         $user = $arguments[0];
         if ($user instanceof User) {
+            if (
+                $user->user_type === 'employee' &&
+                in_array($ability, self::EMPLOYEE_ALLOWED_ABILITIES, true)
+            ) {
+                return true;
+            }
+
             return ($user->roles->where('role_name',$ability)->first() == null) ? false : true;
         }
     }

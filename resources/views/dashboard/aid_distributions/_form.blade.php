@@ -1,5 +1,8 @@
 @php
     $isEdit = isset($distribution) && $distribution->exists;
+    $currentUser = auth()->user();
+    $isEmployee = $currentUser?->user_type === 'employee';
+    $lockedOfficeId = $isEdit ? $distribution->office_id : ($currentUser?->office_id ?? $distribution->office_id);
 @endphp
 
 @if ($errors->any())
@@ -124,9 +127,13 @@
                         name="office_id"
                         label="المكتب"
                         :optionsId="$offices"
-                        :value="$distribution->office_id"
+                        :value="$isEmployee ? $lockedOfficeId : $distribution->office_id"
+                        @if($isEmployee) disabled @endif
                         required
                     />
+                    @if($isEmployee)
+                        <input type="hidden" name="office_id" value="{{ old('office_id', $lockedOfficeId) }}">
+                    @endif
                 </div>
                 <div class="mb-4">
                     <x-form.select

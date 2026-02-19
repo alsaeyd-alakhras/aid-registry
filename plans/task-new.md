@@ -1,270 +1,172 @@
-# 🎯 TASK: تحسين شاشة الإدخال – Smart Family Detection & Aid History Sidebar
+Build Admin Dashboard for Aid Registry System
 
-## 🔴 المرجع الإلزامي
+Create the main index dashboard page for aid-registry system.
 
-الالتزام الكامل بالملفات التالية:
+Objective
 
-* قواعد النظام 
-* تحليل قاعدة البيانات 
-* مسار الموظف 
+Build a statistics dashboard that gives management a real-time overview of:
 
----
+Families
 
-# 1️⃣ الهدف العام
+Aid distributions
 
-تحويل شاشة الإدخال إلى Smart Form:
+Monthly totals
 
-* بحث بالهوية (أساسي أو زوج)
-* إظهار Sidebar جانبي بالمعلومات
-* نسخ بيانات العائلة
-* عرض آخر 10 مساعدات
-* Modal لعرض تفاصيل مساعدة
-* منع تكرار الزوج/الزوجة
-* عدم إنشاء أسرة مكررة
+Office activity
 
----
+Recent distributions
 
-# 2️⃣ التعديلات المطلوبة في الواجهة (UI / UX)
+The page must be clean, readable, and data-focused.
 
-## 🔹 بجانب حقل رقم الهوية:
+🧩 Section 1 — Top Statistic Cards
 
-```
-[ رقم الهوية ] [ زر بحث ]
-```
+Display 6 KPI cards in responsive grid:
 
-### عند الضغط:
+Total Families
 
-* AJAX Request إلى endpoint جديد:
+Count from families table
 
-```
-GET /api/families/search-by-national-id/{id}
-```
+Total Aid Distributions
 
----
+Count from aid_distributions
 
-# 3️⃣ منطق البحث
+Total Cash Distributed (All Time)
 
-السيرفر يقوم بـ:
+Sum cash_amount where aid_mode = cash
 
-1. البحث في:
+Current Month Distributions
 
-   * families.national_id
-   * families.spouse_national_id
+Count where distributed_at is current month
 
-2. إذا لم يوجد:
+Current Month Cash Total
 
-   * لا يظهر Sidebar
-   * يكمل الإدخال طبيعي
+Sum cash_amount current month
 
-3. إذا وجد:
+Active Offices
 
-   * يعيد:
+Count offices where is_active = true
 
-     * بيانات العائلة
-     * هل التطابق هو الشخص الأساسي أم الزوج
-     * آخر 10 مساعدات
-     * عدد إجمالي المساعدات
-     * هل الزوج مسجل في أسرة أخرى
+Each card should show:
 
----
+Title
 
-# 4️⃣ بناء Sidebar (Slide Over Panel)
+Large number
 
-يظهر من اليمين (RTL-aware).
+Small comparison text (e.g. +12% from last month)
 
-## القسم الأول — بيانات الأسرة
+📊 Section 2 — Monthly Chart
 
-عرض:
+Add chart:
 
-* الاسم
-* الهوية
-* الجوال
-* مكان السكن
-* عدد أفراد الأسرة
+Title: Monthly Distribution Overview
 
-مع رسالة:
+Data:
 
-* إذا البحث طابق national_id →
-  "تم العثور على نفس الشخص"
+Month
 
-* إذا طابق spouse_national_id →
-  "تم العثور على سجل باسم الزوج/الزوجة"
+Total Distributions
 
-زر:
+Total Cash Amount
 
-```
-نسخ بيانات الأسرة
-```
+Chart type:
+Bar chart (Distributions)
+Line overlay (Cash total)
 
-### عند الضغط:
+📋 Section 3 — Office Performance Table
 
-* تعبئة الحقول في الفورم فقط
-* لا يتم حفظ
-* تخزين family_id في hidden input
+Table columns:
 
----
+Office Name
 
-## القسم الثاني — آخر 10 مساعدات
+Total Distributions
 
-عرض 10 فقط:
+Cash Total
 
-لكل عنصر:
+In-kind Count
 
-* المكتب
-* التاريخ
-* الاسم
-* نوع المساعدة
-* القيمة أو الصنف
+Last Distribution Date
 
-زر صغير:
+Order by highest distributions.
 
-```
-👁 عرض
-```
+📋 Section 4 — Top Aid Items (In-Kind)
 
-### عند الضغط:
+Table:
 
-* AJAX:
+Aid Item Name
 
-```
-GET /api/aid-distributions/{id}
-```
+Total Times Distributed
 
-* فتح Modal في منتصف الشاشة
-* لا يغلق Sidebar
+Last Distribution Date
 
----
+Order descending by usage.
 
-## القسم الثالث — زر "عرض الكل"
+📋 Section 5 — Recent Distributions
 
-إذا عدد المساعدات > 10:
+Show last 10 operations:
 
-زر:
+Columns:
 
-```
-عرض كل المساعدات
-```
+Date
 
-يفتح قائمة كاملة داخل نفس Sidebar (Lazy Load).
+Family Name
 
----
+Office
 
-# 5️⃣ Modal تفاصيل المساعدة
+Aid Mode
 
-يعرض:
+Cash / Item
 
-## بيانات العملية
+Created By
 
-* المكتب
-* النوع
-* المبلغ أو الصنف
-* التاريخ
-* الملاحظات
+Add button:
+View Details
 
-## بيانات الأسرة كاملة
+🎨 UI Rules
 
-* كل الحقول
-* حالة الزوج
-* عدد أفراد الأسرة
+Clean admin style
 
-Modal مستقل عن Sidebar.
+Responsive grid
 
----
+Summary first
 
-# 6️⃣ منطق الحفظ (الأهم)
+Tables paginated
 
-عند الضغط على حفظ:
+Use soft background
 
-## الحالة 1 — family_id موجود (تم النسخ من Sidebar)
+Highlight cash totals in green
 
-* update families
-* insert aid_distributions
+Highlight cancelled (if status exists) in red
 
-## الحالة 2 — لا يوجد family_id
+⚙️ Performance Rules
 
-* يبحث مرة أخيرة بالهوية (حماية إضافية)
-* إذا وجد:
+Use eager loading
 
-  * يستخدم نفس family_id
-  * update
-  * insert distribution
-* إذا لم يوجد:
+Use aggregate queries (COUNT, SUM)
 
-  * insert family
-  * insert distribution
+Cache dashboard data for 5 minutes
 
----
+Do NOT load all distributions raw
 
-# 7️⃣ منع تكرار الزوج/الزوجة
+🧱 Data Queries Required
 
-قبل إنشاء أسرة جديدة:
+Prepare service class:
 
-* إذا spouse_national_id موجود في families كنational_id
-  → يمنع إنشاء أسرة جديدة
-  → يستخدم الأسرة القديمة
+DashboardService
 
-* لا يسمح بوجود شخص:
+Methods:
 
-  * primary في سجل
-  * و spouse في سجل آخر
+getGlobalStats()
 
----
+getMonthlyStats()
 
-# 8️⃣ قواعد التحقق
+getOfficeStats()
 
-* الهوية مطلوبة
-* aid_mode مطلوب
-* إذا cash:
+getTopAidItems()
 
-  * cash_amount مطلوب
-* إذا in_kind:
+getRecentDistributions()
 
-  * aid_item_id مطلوب
-* لا حذف لعمليات الصرف
-  فقط status = cancelled
+💡 Important
 
----
-
-# 9️⃣ Endpoints المطلوبة
-
-```
-GET    /api/families/search-by-national-id/{id}
-GET    /api/aid-distributions/{id}
-POST   /aid-distributions (الحفظ الموحد)
-```
-
----
-
-# 🔟 التصميم
-
-* Sidebar Slide Over احترافي (Tailwind)
-* Shadow واضح
-* تقسيم داخلي بـ Card Layout
-* Badge تحذيري بلون أصفر إذا الزوج مسجل مسبقاً
-* استخدام نفس ستايل الداشبورد
-* RTL compatible
-* Animation سلس (300ms ease-in-out)
-
----
-
-# 11️⃣ لا يُسمح بـ
-
-* إنشاء صفحة جديدة للعائلة
-* إنشاء صفحة جديدة للمساعدة
-* تخزين مؤقت غير ضروري
-* حفظ تلقائي عند النسخ
-* إعادة تحميل الصفحة
-
----
-
-# 12️⃣ النتيجة النهائية المطلوبة
-
-✔ شاشة واحدة
-✔ منع التكرار
-✔ سرعة إدخال
-✔ عرض سجل سابق
-✔ تحديث نظيف
-✔ تقارير دقيقة
-✔ UX واضح وغير معقد
-
----
+Dashboard must be read-only.
+No editing here.
+Only monitoring and reporting.

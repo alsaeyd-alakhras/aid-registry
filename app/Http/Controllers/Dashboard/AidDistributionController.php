@@ -11,12 +11,15 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
 
 class AidDistributionController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorizeLookupForAidDistribution();
+
         if ($request->ajax()) {
             $year = $request->year ?? Carbon::now()->year;
 
@@ -73,6 +76,8 @@ class AidDistributionController extends Controller
 
     public function create()
     {
+        $this->authorize('create', AidDistribution::class);
+
         $offices = Office::query()->where('is_active', true)->orderBy('name')->get();
         $aidItems = AidItem::query()->where('is_active', true)->orderBy('name')->get();
 
@@ -88,7 +93,10 @@ class AidDistributionController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', AidDistribution::class);
+
         $validated = $this->validateForm($request);
+        $officeId = $this->resolveOfficeIdForStore($validated);
 
         DB::beginTransaction();
         try {
@@ -97,7 +105,7 @@ class AidDistributionController extends Controller
             // إنشاء عملية الصرف
             AidDistribution::create([
                 'family_id' => $family->id,
-                'office_id' => $validated['office_id'],
+                'office_id' => $officeId,
                 'aid_mode' => $validated['aid_mode'],
                 'aid_item_id' => $validated['aid_mode'] === 'in_kind' ? $validated['aid_item_id'] : null,
                 'cash_amount' => $validated['aid_mode'] === 'cash' ? $validated['cash_amount'] : null,
@@ -161,6 +169,8 @@ class AidDistributionController extends Controller
 
     public function edit(AidDistribution $aidDistribution)
     {
+        $this->authorize('update', AidDistribution::class);
+
         $offices = Office::query()->where('is_active', true)->orderBy('name')->get();
         $aidItems = AidItem::query()->where('is_active', true)->orderBy('name')->get();
 
@@ -173,19 +183,24 @@ class AidDistributionController extends Controller
 
     public function show(AidDistribution $aidDistribution)
     {
+        $this->authorize('update', AidDistribution::class);
+
         return redirect()->route('dashboard.aid-distributions.edit', $aidDistribution->id);
     }
 
     public function update(Request $request, AidDistribution $aidDistribution)
     {
+        $this->authorize('update', AidDistribution::class);
+
         $validated = $this->validateForm($request);
+        $officeId = $this->resolveOfficeIdForUpdate($validated, $aidDistribution);
 
         DB::beginTransaction();
         try {
             $aidDistribution->family->update($this->extractFamilyData($validated));
 
             $aidDistribution->update([
-                'office_id' => $validated['office_id'],
+                'office_id' => $officeId,
                 'aid_mode' => $validated['aid_mode'],
                 'aid_item_id' => $validated['aid_mode'] === 'in_kind' ? $validated['aid_item_id'] : null,
                 'cash_amount' => $validated['aid_mode'] === 'cash' ? $validated['cash_amount'] : null,
@@ -206,6 +221,8 @@ class AidDistributionController extends Controller
 
     public function destroy(AidDistribution $aidDistribution)
     {
+        $this->authorize('delete', AidDistribution::class);
+
         $aidDistribution->update([
             'status' => 'cancelled',
             'cancelled_at' => now(),
@@ -217,6 +234,8 @@ class AidDistributionController extends Controller
 
     public function getFilterOptions(Request $request, $column)
     {
+        $this->authorizeLookupForAidDistribution();
+
         $year = $request->year ?? Carbon::now()->year;
 
         $query = AidDistribution::query()
@@ -306,6 +325,36 @@ class AidDistributionController extends Controller
         ];
     }
 
+    private function resolveOfficeIdForStore(array $validated): int
+    {
+        if (!$this->isEmployeeUser()) {
+            return (int) $validated['office_id'];
+        }
+
+        $employeeOfficeId = Auth::user()?->office_id;
+        if (!$employeeOfficeId) {
+            throw ValidationException::withMessages([
+                'office_id' => 'لا يمكن إتمام الحفظ لأن مكتب المستخدم غير محدد.',
+            ]);
+        }
+
+        return (int) $employeeOfficeId;
+    }
+
+    private function resolveOfficeIdForUpdate(array $validated, AidDistribution $aidDistribution): int
+    {
+        if ($this->isEmployeeUser()) {
+            return (int) $aidDistribution->office_id;
+        }
+
+        return (int) $validated['office_id'];
+    }
+
+    private function isEmployeeUser(): bool
+    {
+        return Auth::user()?->user_type === 'employee';
+    }
+
     private function applyColumnFilters($query, array $columnFilters): void
     {
         foreach ($columnFilters as $fieldName => $values) {
@@ -392,6 +441,8 @@ class AidDistributionController extends Controller
      */
     public function searchByNationalId(string $id)
     {
+        $this->authorizeLookupForAidDistribution();
+
         // البحث في العمودين: national_id أو spouse_national_id
         $primaryMatch = Family::query()->where('national_id', $id)->first();
         $spouseMatch = Family::query()->where('spouse_national_id', $id)->first();
@@ -452,6 +503,8 @@ class AidDistributionController extends Controller
      */
     public function getAllAids(int $familyId)
     {
+        $this->authorizeLookupForAidDistribution();
+
         $family = Family::findOrFail($familyId);
 
         $aids = $family->distributions()
@@ -482,6 +535,8 @@ class AidDistributionController extends Controller
      */
     public function showAidDistribution(int $id)
     {
+        $this->authorizeLookupForAidDistribution();
+
         $distribution = AidDistribution::with(['family', 'office', 'aidItem', 'creator'])
             ->findOrFail($id);
 
@@ -508,5 +563,20 @@ class AidDistributionController extends Controller
                 'spouse_national_id' => $distribution->family?->spouse_national_id ?? '-',
             ],
         ]);
+    }
+
+    private function authorizeLookupForAidDistribution(): void
+    {
+        $user = Auth::user();
+
+        if (
+            $user?->can('view', AidDistribution::class) ||
+            $user?->can('create', AidDistribution::class) ||
+            $user?->can('update', AidDistribution::class)
+        ) {
+            return;
+        }
+
+        abort(403);
     }
 }

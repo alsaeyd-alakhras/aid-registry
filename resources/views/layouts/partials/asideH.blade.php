@@ -15,7 +15,7 @@
                 </a>
             </li>
             @endcan --}}
-            @can('view','App\\Models\Allocation')
+            @can('view','App\\Models\AidDistribution')
             <li class="menu-item {{ request()->is('aid-distributions/*') || request()->is('aid-distributions') ? 'active' : '' }}">
                 <a href="{{ route('dashboard.aid-distributions.index') }}" class="menu-link">
                     <i class="fa-solid fa-hand-holding-heart me-2"></i>

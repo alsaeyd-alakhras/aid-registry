@@ -3,7 +3,6 @@
 
 // dashboard routes
 
-use App\Http\Controllers\Dashboard\AllocationController;
 use App\Http\Controllers\Dashboard\ActivityLogController;
 use App\Http\Controllers\Dashboard\AidDistributionController;
 use App\Http\Controllers\Dashboard\AidItemController;
@@ -11,8 +10,6 @@ use App\Http\Controllers\Dashboard\ConstantController;
 use App\Http\Controllers\Dashboard\CurrencyController;
 use App\Http\Controllers\Dashboard\HomeController;
 use App\Http\Controllers\Dashboard\UserController;
-use App\Http\Controllers\Dashboard\ExecutiveController;
-use App\Http\Controllers\Dashboard\MerchantController;
 use App\Http\Controllers\Dashboard\OfficeController;
 use App\Http\Controllers\Dashboard\ReportController;
 use Illuminate\Support\Facades\Route;
@@ -43,16 +40,7 @@ Route::group([
     Route::get('reports/broker-details', [ReportController::class, 'brokerDetails'])->name('reports.brokerDetails');
     /* ********************************************************** */
 
-    // Allocations ************************
-    Route::post('allocations/{allocation}/print', [AllocationController::class, 'print'])->name('allocations.print');
-    Route::post('allocations/import', [AllocationController::class, 'import'])->name('allocations.import');
-    Route::post('allocations/getDataByBudgetNumber', [AllocationController::class, 'getDataByBudgetNumber'])->name('allocations.getDataByBudgetNumber');
-    Route::post('allocations/getDetails', [AllocationController::class, 'getDetails'])->name('allocations.getAllocationDetails');
-    Route::get('allocations-filters/{cloumn}', [AllocationController::class, 'getFilterOptions'])->name('allocations.filters');
-
-    // Merchants ************************
-    Route::get('merchants-filters/{cloumn}', [MerchantController::class, 'getFilterOptions'])->name('merchants.filters');
-    
+    // Merchants ************************    
     Route::get('offices-filters/{cloumn}', [OfficeController::class, 'getFilterOptions'])->name('offices.filters');
     Route::get('aid-items-filters/{cloumn}', [AidItemController::class, 'getFilterOptions'])->name('aid-items.filters');
     Route::get('aid-distributions-filters/{cloumn}', [AidDistributionController::class, 'getFilterOptions'])->name('aid-distributions.filters');
@@ -68,8 +56,6 @@ Route::group([
 
     Route::resources([
         'users' => UserController::class,
-        'allocations' => AllocationController::class,
-        'executives' => ExecutiveController::class,
         'offices' => OfficeController::class,
         'aid-items' => AidItemController::class,
         'aid-distributions' => AidDistributionController::class,

@@ -15,6 +15,12 @@ use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
+    private const EMPLOYEE_DEFAULT_ABILITIES = [
+        'aiddistributions.view',
+        'aiddistributions.create',
+        'aiddistributions.update',
+    ];
+
     /**
      * Display a listing of the resource.
      */
@@ -55,6 +61,11 @@ class UserController extends Controller
             'password.same' => 'كلمة المرور غير متطابقة',
             'confirm_password.same' => 'كلمة المرور غير متطابقة',
         ]);
+        $abilities = $this->normalizeAbilitiesForUserType(
+            $request->user_type,
+            $request->input('abilities', [])
+        );
+
         DB::beginTransaction();
         try {
             if ($request->has('avatar')) {
@@ -63,7 +74,7 @@ class UserController extends Controller
                 $request->merge(['avatar' => $path]);
             }
             $user = User::create($request->all());
-            foreach ($request->abilities as $role) {
+            foreach ($abilities as $role) {
                 RoleUser::create([
                     'role_name' => $role,
                     'user_id' => $user->id,
@@ -144,38 +155,22 @@ class UserController extends Controller
             if (isset($request->password)) {
                 $user->update($request->all());
             }
+            $nextUserType = $request->user_type ?? $user->user_type;
+            $abilities = $this->normalizeAbilitiesForUserType(
+                $nextUserType,
+                $request->input('abilities', [])
+            );
+
             $user->update([
                 'name' => $request->name,
                 'username' => $request->username,
                 'email' => $request->email,
                 'avatar' => $avatar ?? null,
                 'office_id' => $request->office_id ?? $user->office_id,
-                'user_type' => $request->user_type ?? $user->user_type,
+                'user_type' => $nextUserType,
                 'is_active' => $request->is_active ?? $user->is_active,
             ]);
-            if ($request->abilities != null) {
-                $role_old = RoleUser::where('user_id', $user->id)->pluck('role_name')->toArray();
-                $role_new = $request->abilities;
-                foreach ($role_old as $role) {
-                    if (!in_array($role, $role_new)) {
-                        RoleUser::where('user_id', $user->id)->where('role_name', $role)->delete();
-                    }
-                }
-                foreach ($role_new as $role) {
-                    $role_f = RoleUser::where('user_id', $user->id)->where('role_name', $role)->first();
-                    if ($role_f == null) {
-                        RoleUser::create([
-                            'role_name' => $role,
-                            'user_id' => $user->id,
-                            'ability' => 'allow',
-                        ]);
-                    } else {
-                        $role_f->update(['ability' => 'allow']);
-                    }
-                }
-            } else {
-                RoleUser::where('user_id', $user->id)->delete();
-            }
+            $this->syncUserAbilities($user, $abilities);
             ActivityLogService::log(
                 'Updated',
                 'User',
@@ -192,6 +187,39 @@ class UserController extends Controller
             return redirect()->route('dashboard.home')->with('success', 'تم تعديل المستخدم');
         }
         return redirect()->route('dashboard.users.index')->with('success', 'تم تعديل المستخدم');
+    }
+
+    private function normalizeAbilitiesForUserType(string $userType, array $abilities): array
+    {
+        if ($userType === 'employee') {
+            return array_values(array_unique(array_merge(self::EMPLOYEE_DEFAULT_ABILITIES, $abilities)));
+        }
+
+        return array_values(array_unique($abilities));
+    }
+
+    private function syncUserAbilities(User $user, array $abilities): void
+    {
+        $roleOld = RoleUser::where('user_id', $user->id)->pluck('role_name')->toArray();
+
+        foreach ($roleOld as $role) {
+            if (!in_array($role, $abilities, true)) {
+                RoleUser::where('user_id', $user->id)->where('role_name', $role)->delete();
+            }
+        }
+
+        foreach ($abilities as $role) {
+            $roleRecord = RoleUser::where('user_id', $user->id)->where('role_name', $role)->first();
+            if ($roleRecord === null) {
+                RoleUser::create([
+                    'role_name' => $role,
+                    'user_id' => $user->id,
+                    'ability' => 'allow',
+                ]);
+            } else {
+                $roleRecord->update(['ability' => 'allow']);
+            }
+        }
     }
 
     /**
