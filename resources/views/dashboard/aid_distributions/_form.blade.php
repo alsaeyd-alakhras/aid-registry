@@ -1,7 +1,7 @@
 @php
     $isEdit = isset($distribution) && $distribution->exists;
     $currentUser = auth()->user();
-    $isEmployee = $currentUser?->user_type === 'employee';
+    $isEmployee = $currentUser?->user_type == 'employee';
     $lockedOfficeId = $isEdit ? $distribution->office_id : ($currentUser?->office_id ?? $distribution->office_id);
 @endphp
 
@@ -123,14 +123,27 @@
             </div>
             <div class="card-body">
                 <div class="mb-4">
-                    <x-form.select
+                    <label class="form-label" for="office_id">المكتب</label>
+                    <select
+                        id="office_id"
                         name="office_id"
-                        label="المكتب"
-                        :optionsId="$offices"
-                        :value="$isEmployee ? $lockedOfficeId : $distribution->office_id"
+                        class="form-select @error('office_id') is-invalid @enderror"
                         @if($isEmployee) disabled @endif
                         required
-                    />
+                    >
+                        <option value="" @selected(old('office_id', $isEmployee ? $lockedOfficeId : $distribution->office_id) == null)>إختر القيمة</option>
+                        @foreach ($offices as $office)
+                            <option
+                                value="{{ $office->id }}"
+                                @selected(old('office_id', $isEmployee ? $lockedOfficeId : $distribution->office_id) == $office->id)
+                            >
+                                {{ $office->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('office_id')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
                     @if($isEmployee)
                         <input type="hidden" name="office_id" value="{{ old('office_id', $lockedOfficeId) }}">
                     @endif
