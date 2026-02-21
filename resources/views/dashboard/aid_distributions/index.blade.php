@@ -73,7 +73,7 @@
             </button>
         </div>
         @endcan
-        @can('import-excel', 'App\\Models\AidDistribution')
+        @can('import', 'App\\Models\AidDistribution')
         <div class="mx-2 nav-item">
             <a href="{{ route('dashboard.import') }}" class="m-0 text-white btn btn-primary">
                 <i class="fa-solid fa-plus fe-16"></i> استيراد excel

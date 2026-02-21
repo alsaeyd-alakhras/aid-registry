@@ -44,6 +44,7 @@
             'create' => 'اضافة',
             'update' => 'تعديل',
             'delete' => 'حذف',
+            'import' => 'استيراد',
         ],
         // 'accreditationprojects' => [
         //     'name' => 'قائمة الإعتمادية',
