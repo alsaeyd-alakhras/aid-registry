@@ -22,7 +22,5 @@ yarn-error.log
 /.vscode
 /.zed
 
-/plans
-plans/task-new.md
-
-plans/task-new.md
+/plans/
+/plans/task-new.md

@@ -43,6 +43,11 @@ class AidItemController extends Controller
                 ->addColumn('edit', function ($aidItem) {
                     return $aidItem->id;
                 })
+                ->addColumn('estimated_value_formatted', function ($aidItem) {
+                    return $aidItem->estimated_value !== null
+                        ? number_format((float) $aidItem->estimated_value, 2, '.', '')
+                        : '';
+                })
                 ->addColumn('is_active_badge', function ($aidItem) {
                     return $aidItem->is_active ? '<span class="badge bg-success">مفعل</span>' : '<span class="badge bg-danger">معطل</span>';
                 })
@@ -118,6 +123,7 @@ class AidItemController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:120|unique:aid_items',
+            'estimated_value' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
         ]);
 
@@ -151,6 +157,7 @@ class AidItemController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:120|unique:aid_items,name,' . $aidItem->id,
+            'estimated_value' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
         ]);
 

@@ -1,172 +1,93 @@
-Build Admin Dashboard for Aid Registry System
+# إضافة حقل "القيمة التقديرية" في جدول أنواع المساعدات
 
-Create the main index dashboard page for aid-registry system.
+المشروع Laravel (Aid Registry).
 
-Objective
+المطلوب:
+إضافة حقل جديد باسم "estimated_value" (القيمة التقديرية) داخل جدول أنواع المساعدات (aid_types أو الجدول المستخدم حالياً)، بحيث يكون:
+- رقم فقط
+- يقبل كسور عشرية (لدعم مبالغ مالية)
+- اختياري nullable (حسب سياسة النظام)
+- يظهر في الفورم (create + edit)
+- يُعرض في شاشة العرض إن وجدت
 
-Build a statistics dashboard that gives management a real-time overview of:
+---
 
-Families
+## 1) Migration
 
-Aid distributions
+أنشئ migration جديد يضيف الحقل:
 
-Monthly totals
+- الاسم: `estimated_value`
+- النوع: decimal(10,2)
+- nullable
+- بعد عمود مناسب (مثلاً بعد name أو description)
 
-Office activity
+مثال منطقي:
+$table->decimal('estimated_value', 10, 2)->nullable()->after('name');
 
-Recent distributions
+لا تقم بتعديل migration قديم — استخدم migration جديد فقط.
 
-The page must be clean, readable, and data-focused.
+---
 
-🧩 Section 1 — Top Statistic Cards
+## 2) Model (AidType.php)
 
-Display 6 KPI cards in responsive grid:
+- أضف الحقل إلى `$fillable`
+- أضف cast:
+  'estimated_value' => 'decimal:2'
 
-Total Families
+---
 
-Count from families table
+## 3) Validation (Controller)
 
-Total Aid Distributions
+في store و update:
 
-Count from aid_distributions
+- 'estimated_value' => 'nullable|numeric|min:0'
 
-Total Cash Distributed (All Time)
+تأكد:
+- منع القيم السالبة
+- السماح بالقيمة 0 إن لزم
 
-Sum cash_amount where aid_mode = cash
+---
 
-Current Month Distributions
+## 4) تعديل الفورم (Blade)
 
-Count where distributed_at is current month
+في:
+resources/views/dashboard/aid_types/_form.blade.php
+أو الفورم المستخدم فعلياً
 
-Current Month Cash Total
+أضف حقل:
 
-Sum cash_amount current month
+- type="number"
+- step="0.01"
+- min="0"
+- name="estimated_value"
 
-Active Offices
+مع:
+- old('estimated_value', $aidType->estimated_value ?? '')
 
-Count offices where is_active = true
+---
 
-Each card should show:
+## 5) العرض (Index / Show)
 
-Title
+إذا توجد شاشة عرض لأنواع المساعدات:
+- أضف عمود في الجدول لعرض القيمة
+- نسّقها كرقم ثابت منزلتين
+- لا تستخدم تنسيق عملة ثابتة إذا النظام متعدد العملات
 
-Large number
+---
 
-Small comparison text (e.g. +12% from last month)
+## 6) اختبار بعد التنفيذ
 
-📊 Section 2 — Monthly Chart
+- إنشاء نوع مساعدة مع قيمة
+- إنشاء نوع بدون قيمة
+- تعديل القيمة
+- إدخال رقم عشري
+- إدخال رقم سالب (يجب رفضه)
+- إدخال نص (يجب رفضه)
 
-Add chart:
+---
 
-Title: Monthly Distribution Overview
+## ملاحظات مهمة
 
-Data:
-
-Month
-
-Total Distributions
-
-Total Cash Amount
-
-Chart type:
-Bar chart (Distributions)
-Line overlay (Cash total)
-
-📋 Section 3 — Office Performance Table
-
-Table columns:
-
-Office Name
-
-Total Distributions
-
-Cash Total
-
-In-kind Count
-
-Last Distribution Date
-
-Order by highest distributions.
-
-📋 Section 4 — Top Aid Items (In-Kind)
-
-Table:
-
-Aid Item Name
-
-Total Times Distributed
-
-Last Distribution Date
-
-Order descending by usage.
-
-📋 Section 5 — Recent Distributions
-
-Show last 10 operations:
-
-Columns:
-
-Date
-
-Family Name
-
-Office
-
-Aid Mode
-
-Cash / Item
-
-Created By
-
-Add button:
-View Details
-
-🎨 UI Rules
-
-Clean admin style
-
-Responsive grid
-
-Summary first
-
-Tables paginated
-
-Use soft background
-
-Highlight cash totals in green
-
-Highlight cancelled (if status exists) in red
-
-⚙️ Performance Rules
-
-Use eager loading
-
-Use aggregate queries (COUNT, SUM)
-
-Cache dashboard data for 5 minutes
-
-Do NOT load all distributions raw
-
-🧱 Data Queries Required
-
-Prepare service class:
-
-DashboardService
-
-Methods:
-
-getGlobalStats()
-
-getMonthlyStats()
-
-getOfficeStats()
-
-getTopAidItems()
-
-getRecentDistributions()
-
-💡 Important
-
-Dashboard must be read-only.
-No editing here.
-Only monitoring and reporting.
+- لا تربط القيمة التقديرية مباشرة بحسابات التوزيع حالياً.
+- هذا الحقل مرجعي فقط (Informational) ما لم يُطلب خلاف ذلك.
+- لا تغيّر أي منطق موجود حالياً في aid_distributions.

@@ -73,6 +73,13 @@
             </button>
         </div>
         @endcan
+        @can('import-excel', 'App\\Models\AidDistribution')
+        <div class="mx-2 nav-item">
+            <a href="{{ route('dashboard.import') }}" class="m-0 text-white btn btn-primary">
+                <i class="fa-solid fa-plus fe-16"></i> استيراد excel
+            </a>
+        </div>
+        @endcan
         @can('create', 'App\\Models\AidDistribution')
         <div class="mx-2 nav-item">
             <a href="{{ route('dashboard.aid-distributions.create') }}" class="m-0 text-white btn btn-primary">
@@ -105,6 +112,7 @@
             'office_name' => 'المكتب',
             'aid_mode' => 'نوع المساعدة',
             'aid_value' => 'القيمة/الصنف',
+            'quantity' => 'الكمية',
             'mobile' => 'الجوال',
             'creator_name' => 'مدخل العملية',
         ];
@@ -261,6 +269,7 @@
                 'office_name',
                 'aid_mode',
                 'aid_value',
+                'quantity',
                 'mobile',
                 'creator_name',
                 'delete'
@@ -308,6 +317,7 @@
                     }
                 },
                 { data: 'aid_value', name: 'aid_value', orderable: false, class: 'text-center' },
+                { data: 'quantity', name: 'quantity', orderable: false, class: 'text-center' },
                 { data: 'mobile', name: 'mobile', orderable: false, class: 'text-center' },
                 { data: 'creator_name', name: 'creator_name', orderable: false },
                 {
@@ -332,8 +342,8 @@
 
             const SUMMABLE_COLUMNS = { enabled: false, columns: {} };
             const dataForm = {};
-            const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-            const columnNamesCopy = ['distributed_at', 'primary_name', 'national_id', 'housing_location', 'family_members_count', 'marital_status', 'office_name', 'aid_mode', 'aid_value', 'mobile', 'creator_name'];
+            const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+            const columnNamesCopy = ['distributed_at', 'primary_name', 'national_id', 'housing_location', 'family_members_count', 'marital_status', 'office_name', 'aid_mode', 'aid_value', 'quantity', 'mobile', 'creator_name'];
         </script>
         <script type="text/javascript" src="{{ asset('js/datatable.js') }}"></script>
     @endpush

@@ -84,6 +84,7 @@
                             :options="[
                                 'single' => 'أعزب/عزباء',
                                 'married' => 'متزوج/ة',
+                                'polygamous' => 'متعدد الزوجات',
                                 'widowed' => 'أرمل/ة',
                                 'divorced' => 'مطلق/ة',
                             ]"
@@ -92,22 +93,40 @@
                         />
                     </div>
                     <div id="spouse-fields" class="row">
-                        <div class="mb-4 col-md-6">
-                            <x-form.input
-                                id="spouse_name"
-                                name="spouse_name"
-                                label="اسم الزوج/الزوجة"
-                                :value="$familyForm['spouse_name'] ?? ''"
-                            />
-                        </div>
-                        <div class="mb-4 col-md-6">
-                            <x-form.input
-                                id="spouse_national_id"
-                                name="spouse_national_id"
-                                label="رقم هوية الزوج/الزوجة"
-                                maxlength="10"
-                                :value="$familyForm['spouse_national_id'] ?? ''"
-                            />
+                        @for ($wifeIndex = 0; $wifeIndex < 4; $wifeIndex++)
+                            <div class="row spouse-row" data-spouse-index="{{ $wifeIndex }}">
+                                <div class="mb-4 col-md-5">
+                                    <x-form.input
+                                        id="spouses_{{ $wifeIndex }}_full_name"
+                                        name="spouses[{{ $wifeIndex }}][full_name]"
+                                        label="اسم الزوجة {{ $wifeIndex + 1 }}"
+                                        :value="old('spouses.' . $wifeIndex . '.full_name', $familyForm['spouses'][$wifeIndex]['full_name'] ?? '')"
+                                    />
+                                </div>
+                                <div class="mb-4 col-md-5">
+                                    <x-form.input
+                                        id="spouses_{{ $wifeIndex }}_national_id"
+                                        name="spouses[{{ $wifeIndex }}][national_id]"
+                                        label="رقم هوية الزوجة {{ $wifeIndex + 1 }}"
+                                        maxlength="10"
+                                        :value="old('spouses.' . $wifeIndex . '.national_id', $familyForm['spouses'][$wifeIndex]['national_id'] ?? '')"
+                                    />
+                                </div>
+                                <div class="mb-4 col-md-2 d-flex align-items-end">
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm btn-outline-danger w-100 remove-spouse-btn"
+                                        data-spouse-index="{{ $wifeIndex }}"
+                                    >
+                                        <i class="ti ti-trash me-1"></i> حذف
+                                    </button>
+                                </div>
+                            </div>
+                        @endfor
+                        <div class="col-12 mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="add-spouse-btn">
+                                <i class="ti ti-plus me-1"></i> إضافة زوجة
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -180,6 +199,17 @@
                         :value="$distribution->aid_item_id"
                     />
                 </div>
+                <div class="mb-4" id="quantity-wrapper">
+                    <x-form.input
+                        id="quantity"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        name="quantity"
+                        label="كمية الصرف"
+                        :value="$distribution->quantity"
+                    />
+                </div>
                 <div class="mb-4">
                     <x-form.input
                         type="date"
@@ -238,10 +268,8 @@
                 </div>
                 <div id="sidebar-spouse-info" style="display: none;">
                     <div class="mb-2">
-                        <strong>اسم الزوج/الزوجة:</strong> <span id="sidebar-spouse-name"></span>
-                    </div>
-                    <div class="mb-2">
-                        <strong>هوية الزوج/الزوجة:</strong> <span id="sidebar-spouse-id"></span>
+                        <strong>الزوجات:</strong>
+                        <div id="sidebar-spouses-list" class="mt-2"></div>
                     </div>
                 </div>
                 <button type="button" class="btn btn-success w-100 mt-3" id="copy-family-btn">
@@ -286,6 +314,9 @@
                         <div class="mb-2">
                             <strong>القيمة:</strong> <span id="modal-aid-value"></span>
                         </div>
+                        <div class="mb-2" id="modal-quantity-wrapper" style="display: none;">
+                            <strong>الكمية:</strong> <span id="modal-aid-quantity"></span>
+                        </div>
                         <div class="mb-2">
                             <strong>التاريخ:</strong> <span id="modal-date"></span>
                         </div>
@@ -321,10 +352,8 @@
                         </div>
                         <div id="modal-spouse-info" style="display: none;">
                             <div class="mb-2">
-                                <strong>اسم الزوج/الزوجة:</strong> <span id="modal-spouse-name"></span>
-                            </div>
-                            <div class="mb-2">
-                                <strong>هوية الزوج/الزوجة:</strong> <span id="modal-spouse-id"></span>
+                                <strong>الزوجات:</strong>
+                                <div id="modal-spouses-list" class="mt-2"></div>
                             </div>
                         </div>
                     </div>
@@ -396,24 +425,137 @@
     <script>
         $(document).ready(function () {
             let currentFamilyData = null;
+            let visiblePolygamousRows = 2;
+
+            function countFilledSpouses() {
+                let filledCount = 0;
+                $('.spouse-row').each(function () {
+                    const spouseIndex = parseInt($(this).data('spouse-index'), 10);
+                    const hasValue = $(`#spouses_${spouseIndex}_full_name`).val().trim() !== '' ||
+                        $(`#spouses_${spouseIndex}_national_id`).val().trim() !== '';
+                    if (hasValue) {
+                        filledCount += 1;
+                    }
+                });
+                return filledCount;
+            }
+
+            function toggleAddSpouseButton(isPolygamous) {
+                const canAddMore = visiblePolygamousRows < 4;
+                $('#add-spouse-btn').toggle(isPolygamous && canAddMore);
+            }
+
+            function toggleRemoveSpouseButtons(isPolygamous, isMarried) {
+                $('.remove-spouse-btn').each(function () {
+                    const spouseIndex = parseInt($(this).data('spouse-index'), 10);
+                    const isVisibleRow = isPolygamous
+                        ? spouseIndex < visiblePolygamousRows
+                        : (isMarried && spouseIndex === 0);
+                    const canRemove = isPolygamous && visiblePolygamousRows > 2;
+                    $(this).toggle(isVisibleRow && canRemove);
+                });
+            }
+
+            function getSpouseRowValue(spouseIndex) {
+                return {
+                    full_name: $(`#spouses_${spouseIndex}_full_name`).val(),
+                    national_id: $(`#spouses_${spouseIndex}_national_id`).val(),
+                };
+            }
+
+            function setSpouseRowValue(spouseIndex, spouse) {
+                $(`#spouses_${spouseIndex}_full_name`).val(spouse.full_name || '');
+                $(`#spouses_${spouseIndex}_national_id`).val(spouse.national_id || '');
+            }
 
             function toggleSpouseFields() {
-                const isMarried = $('#marital_status').val() === 'married';
-                $('#spouse-fields').toggle(isMarried);
-
-                $('#spouse_name, #spouse_national_id')
-                    .prop('required', isMarried)
-                    .prop('disabled', !isMarried);
-
-                if (!isMarried) {
-                    $('#spouse_name, #spouse_national_id').val('');
+                const maritalStatus = $('#marital_status').val();
+                const isMarried = maritalStatus === 'married';
+                const isPolygamous = maritalStatus === 'polygamous';
+                const shouldShowSpouses = isMarried || isPolygamous;
+                if (isPolygamous && visiblePolygamousRows < 2) {
+                    visiblePolygamousRows = 2;
                 }
+
+                $('#spouse-fields').toggle(shouldShowSpouses);
+
+                $('.spouse-row').each(function () {
+                    const spouseIndex = parseInt($(this).data('spouse-index'), 10);
+                    const shouldShowRow = (isPolygamous && spouseIndex < visiblePolygamousRows) || (isMarried && spouseIndex === 0);
+
+                    $(this).toggle(shouldShowRow);
+                    $(this).find('input').prop('disabled', !shouldShowRow);
+
+                    const isRequired = shouldShowRow && (
+                        (isMarried && spouseIndex === 0) ||
+                        (isPolygamous && (spouseIndex === 0 || spouseIndex === 1))
+                    );
+
+                    $(`#spouses_${spouseIndex}_national_id`).prop('required', isRequired);
+
+                    if (!shouldShowRow) {
+                        $(this).find('input').val('');
+                    }
+                });
+
+                toggleAddSpouseButton(isPolygamous);
+                toggleRemoveSpouseButtons(isPolygamous, isMarried);
+            }
+
+            function clearSpouseFields() {
+                $('.spouse-row input').val('');
+            }
+
+            function getFamilySpouses(family) {
+                if (Array.isArray(family.spouses) && family.spouses.length) {
+                    return family.spouses;
+                }
+
+                if (family.spouse_national_id || family.spouse_full_name) {
+                    return [{
+                        full_name: family.spouse_full_name || '',
+                        national_id: family.spouse_national_id || '',
+                    }];
+                }
+
+                return [];
+            }
+
+            function fillSpouseFields(spouses) {
+                clearSpouseFields();
+                spouses.slice(0, 4).forEach(function (spouse, idx) {
+                    $(`#spouses_${idx}_full_name`).val(spouse.full_name || '');
+                    $(`#spouses_${idx}_national_id`).val(spouse.national_id || '');
+                });
+
+                if ($('#marital_status').val() === 'polygamous') {
+                    visiblePolygamousRows = Math.max(2, Math.min(4, spouses.length || 2));
+                    toggleSpouseFields();
+                }
+            }
+
+            function renderSpousesList($target, spouses) {
+                $target.empty();
+                if (!spouses.length) {
+                    $target.append('<div class="text-muted">-</div>');
+                    return;
+                }
+
+                spouses.forEach(function (spouse, idx) {
+                    const item = `
+                        <div class="small mb-1">
+                            <strong>${idx + 1})</strong> ${spouse.full_name || '-'} - ${spouse.national_id || '-'}
+                        </div>
+                    `;
+                    $target.append(item);
+                });
             }
 
             function toggleAidModeFields() {
                 const mode = $('#aid_mode').val();
                 $('#cash-amount-wrapper').toggle(mode === 'cash');
                 $('#aid-item-wrapper').toggle(mode === 'in_kind');
+                $('#quantity-wrapper').toggle(mode === 'in_kind');
 
                 $('#cash_amount')
                     .prop('required', mode === 'cash')
@@ -423,8 +565,13 @@
                     .prop('required', mode === 'in_kind')
                     .prop('disabled', mode !== 'in_kind');
 
+                $('#quantity')
+                    .prop('required', mode === 'in_kind')
+                    .prop('disabled', mode !== 'in_kind');
+
                 if (mode === 'cash') {
                     $('#aid_item_id').val('').trigger('change');
+                    $('#quantity').val('');
                 } else if (mode === 'in_kind') {
                     $('#cash_amount').val('');
                 }
@@ -432,6 +579,32 @@
 
             $('#marital_status').on('change', toggleSpouseFields);
             $('#aid_mode').on('change', toggleAidModeFields);
+            $('#add-spouse-btn').on('click', function () {
+                if ($('#marital_status').val() !== 'polygamous') return;
+                if (visiblePolygamousRows < 4) {
+                    visiblePolygamousRows += 1;
+                    toggleSpouseFields();
+                }
+            });
+            $(document).on('click', '.remove-spouse-btn', function () {
+                if ($('#marital_status').val() !== 'polygamous') return;
+                if (visiblePolygamousRows <= 2) return;
+
+                const removeIndex = parseInt($(this).data('spouse-index'), 10);
+                if (removeIndex >= visiblePolygamousRows) return;
+
+                for (let i = removeIndex; i < visiblePolygamousRows - 1; i += 1) {
+                    setSpouseRowValue(i, getSpouseRowValue(i + 1));
+                }
+
+                setSpouseRowValue(visiblePolygamousRows - 1, { full_name: '', national_id: '' });
+                visiblePolygamousRows -= 1;
+                toggleSpouseFields();
+            });
+
+            if ($('#marital_status').val() === 'polygamous') {
+                visiblePolygamousRows = Math.max(2, Math.min(4, countFilledSpouses() || 2));
+            }
 
             toggleSpouseFields();
             toggleAidModeFields();
@@ -532,15 +705,16 @@
                 const maritalStatusText = {
                     'single': 'أعزب/عزباء',
                     'married': 'متزوج/ة',
+                    'polygamous': 'متعدد الزوجات',
                     'widowed': 'أرمل/ة',
                     'divorced': 'مطلق/ة'
                 };
                 $('#sidebar-marital').text(maritalStatusText[family.marital_status] || '-');
 
-                // بيانات الزوج/الزوجة
-                if (family.marital_status === 'married' && family.spouse_full_name) {
-                    $('#sidebar-spouse-name').text(family.spouse_full_name || '-');
-                    $('#sidebar-spouse-id').text(family.spouse_national_id || '-');
+                // بيانات الزوجات
+                const spouses = getFamilySpouses(family);
+                if ((family.marital_status === 'married' || family.marital_status === 'polygamous') && spouses.length) {
+                    renderSpousesList($('#sidebar-spouses-list'), spouses);
                     $('#sidebar-spouse-info').show();
                 } else {
                     $('#sidebar-spouse-info').hide();
@@ -569,12 +743,16 @@
                 }
 
                 aids.forEach(function(aid) {
+                    const quantityBadge = aid.aid_mode === 'عينية' && aid.quantity && aid.quantity !== '-'
+                        ? `<div><small class="text-muted">الكمية: ${aid.quantity}</small></div>`
+                        : '';
                     const item = `
                         <div class="list-group-item d-flex justify-content-between align-items-start">
                             <div class="me-auto">
                                 <div class="fw-bold">${aid.office_name}</div>
                                 <small>${aid.distributed_at} - ${aid.aid_mode}</small>
                                 <div>${aid.aid_value}</div>
+                                ${quantityBadge}
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary view-aid-btn" data-aid-id="${aid.id}">
                                 <i class="ti ti-eye"></i> عرض
@@ -608,16 +786,12 @@
 
                 // نسخ بيانات الأسرة القديمة إلى الفورم
                 $('#primary_name').val(family.full_name || '');
-                $('#national_id').val($('#national_id').val()); // نبقي الهوية المُدخلة
+                $('#national_id').val(family.national_id || $('#national_id').val()); // نبقي الهوية المُدخلة
                 $('#mobile').val(family.phone || '');
                 $('#family_members_count').val(family.family_members_count || '');
                 $('#housing_location').val(family.address || '');
                 $('#marital_status').val(family.marital_status || 'single').trigger('change');
-                
-                if (family.marital_status === 'married') {
-                    $('#spouse_name').val(family.spouse_full_name || '');
-                    $('#spouse_national_id').val(family.spouse_national_id || '');
-                }
+                fillSpouseFields(getFamilySpouses(family));
 
                 // نضع family_id و resolution_mode
                 $('#family_id').val(family.id);
@@ -661,11 +835,7 @@
                 $('#family_members_count').val(family.family_members_count || '');
                 $('#housing_location').val(family.address || '');
                 $('#marital_status').val(family.marital_status || 'single').trigger('change');
-                
-                if (family.marital_status === 'married') {
-                    $('#spouse_name').val(family.spouse_full_name || '');
-                    $('#spouse_national_id').val(family.spouse_national_id || '');
-                }
+                fillSpouseFields(getFamilySpouses(family));
 
                 // تخزين family_id
                 $('#family_id').val(family.id);
@@ -692,6 +862,13 @@
                                 ? (dist.cash_amount ? dist.cash_amount + ' ₪' : '-')
                                 : dist.aid_item_name
                         );
+                        if (dist.aid_mode === 'عينية') {
+                            $('#modal-aid-quantity').text(dist.quantity ? dist.quantity : '-');
+                            $('#modal-quantity-wrapper').show();
+                        } else {
+                            $('#modal-aid-quantity').text('-');
+                            $('#modal-quantity-wrapper').hide();
+                        }
                         $('#modal-date').text(dist.distributed_at);
                         $('#modal-status').text(dist.status === 'active' ? 'نشط' : 'ملغي');
                         $('#modal-creator').text(dist.creator_name);
@@ -705,9 +882,9 @@
                         $('#modal-family-address').text(family.address);
                         $('#modal-family-marital').text(family.marital_status);
 
-                        if (family.spouse_full_name && family.spouse_full_name !== '-') {
-                            $('#modal-spouse-name').text(family.spouse_full_name);
-                            $('#modal-spouse-id').text(family.spouse_national_id);
+                        const spouses = getFamilySpouses(family);
+                        if (spouses.length) {
+                            renderSpousesList($('#modal-spouses-list'), spouses);
                             $('#modal-spouse-info').show();
                         } else {
                             $('#modal-spouse-info').hide();

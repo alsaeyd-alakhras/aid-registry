@@ -12,6 +12,11 @@
         <div class="form-group col-md-12">
             <x-form.input type="text" id="name" name="name" label="اسم نوع المساعدة" placeholder="أدخل اسم نوع المساعدة" required />
         </div>
+        <div class="form-group col-md-12">
+            <label for="estimated_value" class="form-label">القيمة التقديرية</label>
+            <input type="number" step="0.01" min="0" class="form-control" id="estimated_value" name="estimated_value"
+                placeholder="0.00" value="{{ old('estimated_value', isset($aidItem) ? ($aidItem->estimated_value ?? '') : '') }}">
+        </div>
         <div class="form-group col-md-12" hidden>
             <label for="is_active" class="form-label">الحالة</label>
             <div class="form-check form-switch">

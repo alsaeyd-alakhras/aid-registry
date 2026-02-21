@@ -12,6 +12,7 @@ class AidDistribution extends Model
         'office_id',
         'aid_mode',
         'aid_item_id',
+        'quantity',
         'cash_amount',
         'distributed_at',
         'created_by',
@@ -23,6 +24,7 @@ class AidDistribution extends Model
 
     protected $casts = [
         'cash_amount'    => 'decimal:2',
+        'quantity'       => 'decimal:2',
         'distributed_at' => 'datetime',
         'cancelled_at'   => 'datetime',
     ];

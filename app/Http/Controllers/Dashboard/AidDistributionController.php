@@ -55,6 +55,9 @@ class AidDistributionController extends Controller
                     'aid_value' => $distribution->aid_mode === 'cash'
                         ? ($distribution->cash_amount ?? 0)
                         : ($distribution->aidItem?->name ?? '-'),
+                    'quantity' => $distribution->aid_mode === 'in_kind'
+                        ? ($distribution->quantity !== null ? number_format((float) $distribution->quantity, 2) : '-')
+                        : '-',
                     'mobile' => $family?->phone ?? '-',
                     'creator_name' => $distribution->creator?->name ?? '-',
                 ];
@@ -109,6 +112,7 @@ class AidDistributionController extends Controller
                 'office_id' => $officeId,
                 'aid_mode' => $validated['aid_mode'],
                 'aid_item_id' => $validated['aid_mode'] === 'in_kind' ? $validated['aid_item_id'] : null,
+                'quantity' => $validated['aid_mode'] === 'in_kind' ? $validated['quantity'] : null,
                 'cash_amount' => $validated['aid_mode'] === 'cash' ? $validated['cash_amount'] : null,
                 'distributed_at' => !empty($validated['distributed_date'])
                     ? Carbon::parse($validated['distributed_date'])->startOfDay()
@@ -136,7 +140,7 @@ class AidDistributionController extends Controller
 
         // البحث عن تطابق
         $primaryMatch = Family::query()->where('national_id', $nationalId)->first();
-        $spouseMatch = Family::query()->where('spouse_national_id', $nationalId)->first();
+        $spouseMatch = $this->findFamilyBySpouseNationalId($nationalId);
 
         // الحالة 1: primary_match
         if ($primaryMatch) {
@@ -205,6 +209,7 @@ class AidDistributionController extends Controller
                 'office_id' => $officeId,
                 'aid_mode' => $validated['aid_mode'],
                 'aid_item_id' => $validated['aid_mode'] === 'in_kind' ? $validated['aid_item_id'] : null,
+                'quantity' => $validated['aid_mode'] === 'in_kind' ? $validated['quantity'] : null,
                 'cash_amount' => $validated['aid_mode'] === 'cash' ? $validated['cash_amount'] : null,
                 'distributed_at' => !empty($validated['distributed_date'])
                     ? Carbon::parse($validated['distributed_date'])->startOfDay()
@@ -268,6 +273,11 @@ class AidDistributionController extends Controller
             'aid_value' => $rows->map(function (AidDistribution $d) {
                 return $d->aid_mode === 'cash' ? (string) ($d->cash_amount ?? 0) : ($d->aidItem?->name ?? null);
             })->filter()->unique()->values()->toArray(),
+            'quantity' => $rows->map(function (AidDistribution $d) {
+                return $d->aid_mode === 'in_kind' && $d->quantity !== null
+                    ? number_format((float) $d->quantity, 2)
+                    : null;
+            })->filter()->unique()->values()->toArray(),
             'primary_name' => $rows->pluck('family.full_name')->filter()->unique()->values()->toArray(),
             'national_id' => $rows->pluck('family.national_id')->filter()->unique()->values()->toArray(),
             'housing_location' => $rows->pluck('family.address')->filter()->unique()->values()->toArray(),
@@ -283,7 +293,7 @@ class AidDistributionController extends Controller
 
     private function validateForm(Request $request): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'family_id' => 'nullable|exists:families,id',
             'resolution_mode' => 'nullable|in:attach_to_existing,create_new_family',
             'primary_name' => 'required|string|max:255',
@@ -291,35 +301,97 @@ class AidDistributionController extends Controller
             'mobile' => 'nullable|string|max:20',
             'family_members_count' => 'nullable|integer|min:1',
             'housing_location' => 'nullable|string|max:255',
-            'marital_status' => 'required|in:single,married,widowed,divorced',
-            'spouse_name' => 'nullable|string|max:255|required_if:marital_status,married',
-            'spouse_national_id' => 'nullable|string|max:20|required_if:marital_status,married',
+            'marital_status' => 'required|in:single,married,polygamous,widowed,divorced',
+            'spouse_name' => 'nullable|string|max:255',
+            'spouse_national_id' => 'nullable|string|max:20',
+            'spouses' => 'nullable|array|max:4',
+            'spouses.*.full_name' => 'nullable|string|max:255',
+            'spouses.*.national_id' => 'nullable|string|max:20',
 
             'office_id' => 'required|exists:offices,id',
             'aid_mode' => 'required|in:cash,in_kind',
             'cash_amount' => 'nullable|numeric|min:0|required_if:aid_mode,cash',
             'aid_item_id' => 'nullable|exists:aid_items,id|required_if:aid_mode,in_kind',
+            'quantity' => 'nullable|numeric|min:0.01|required_if:aid_mode,in_kind',
             'distributed_date' => 'nullable|date',
             'distribution_notes' => 'nullable|string',
         ]);
+
+        $spouses = $this->normalizedSpousesFromInput($validated);
+        $status = $validated['marital_status'];
+
+        if (in_array($status, ['single', 'widowed', 'divorced'], true) && !empty($spouses)) {
+            throw ValidationException::withMessages([
+                'spouses' => 'لا يمكن إدخال بيانات الزوجات عند اختيار حالة اجتماعية غير متزوج.',
+            ]);
+        }
+
+        if ($status === 'married' && empty($spouses[0]['national_id'])) {
+            throw ValidationException::withMessages([
+                'spouses.0.national_id' => 'رقم هوية الزوجة الأولى مطلوب عند اختيار متزوج/ة.',
+            ]);
+        }
+
+        if ($status === 'polygamous') {
+            if (count($spouses) < 2) {
+                throw ValidationException::withMessages([
+                    'spouses' => 'في حالة متعدد الزوجات يجب إدخال زوجتين على الأقل.',
+                ]);
+            }
+
+            if (empty($spouses[0]['national_id']) || empty($spouses[1]['national_id'])) {
+                throw ValidationException::withMessages([
+                    'spouses.0.national_id' => 'رقم هوية الزوجة الأولى مطلوب.',
+                    'spouses.1.national_id' => 'رقم هوية الزوجة الثانية مطلوب.',
+                ]);
+            }
+        }
+
+        $wifeNationalIds = collect($spouses)->pluck('national_id')->filter()->values();
+        if ($wifeNationalIds->count() !== $wifeNationalIds->unique()->count()) {
+            throw ValidationException::withMessages([
+                'spouses' => 'لا يمكن تكرار رقم هوية الزوجة أكثر من مرة.',
+            ]);
+        }
+
+        if ($wifeNationalIds->contains($validated['national_id'])) {
+            throw ValidationException::withMessages([
+                'spouses' => 'لا يمكن أن يكون رقم هوية المستفيد الأساسي هو نفسه رقم هوية الزوجة.',
+            ]);
+        }
+
+        $validated['spouses'] = $spouses;
+
+        return $validated;
     }
 
     private function extractFamilyData(array $validated): array
     {
+        $status = $validated['marital_status'];
+        $spouses = in_array($status, ['married', 'polygamous'], true)
+            ? $this->normalizedSpousesFromInput($validated)
+            : [];
+        $firstSpouse = $spouses[0] ?? null;
+
         return [
             'full_name' => $validated['primary_name'],
             'national_id' => $validated['national_id'],
             'phone' => $validated['mobile'] ?? null,
             'family_members_count' => $validated['family_members_count'] ?? null,
             'address' => $validated['housing_location'] ?? null,
-            'marital_status' => $validated['marital_status'],
-            'spouse_full_name' => $validated['marital_status'] === 'married' ? ($validated['spouse_name'] ?? null) : null,
-            'spouse_national_id' => $validated['marital_status'] === 'married' ? ($validated['spouse_national_id'] ?? null) : null,
+            'marital_status' => $status,
+            'spouses' => !empty($spouses) ? $spouses : null,
+            // توافق مؤقت مع الحقول القديمة
+            'spouse_full_name' => $firstSpouse['full_name'] ?? null,
+            'spouse_national_id' => $firstSpouse['national_id'] ?? null,
         ];
     }
 
     private function mapFamilyToForm(Family $family): array
     {
+        $spouses = $this->getFamilySpouses($family);
+        $firstSpouse = $spouses[0] ?? null;
+
         return [
             'primary_name' => $family->full_name,
             'national_id' => $family->national_id,
@@ -327,8 +399,10 @@ class AidDistributionController extends Controller
             'family_members_count' => $family->family_members_count,
             'housing_location' => $family->address,
             'marital_status' => $family->marital_status ?? 'single',
-            'spouse_name' => $family->spouse_full_name,
-            'spouse_national_id' => $family->spouse_national_id,
+            'spouses' => $spouses,
+            // توافق مؤقت مع الحقول القديمة في الواجهة
+            'spouse_name' => $firstSpouse['full_name'] ?? null,
+            'spouse_national_id' => $firstSpouse['national_id'] ?? null,
         ];
     }
 
@@ -427,6 +501,13 @@ class AidDistributionController extends Controller
                         }
                     });
                     break;
+                case 'quantity':
+                    $query->where(function ($subQ) use ($filteredValues) {
+                        foreach ($filteredValues as $value) {
+                            $subQ->orWhere('quantity', 'like', '%' . $value . '%');
+                        }
+                    });
+                    break;
                 default:
                     $query->whereIn($fieldName, $filteredValues);
                     break;
@@ -437,8 +518,11 @@ class AidDistributionController extends Controller
     private function translateMaritalStatus(?string $status): string
     {
         return match ($status) {
+            'single' => 'أعزب/عزباء',
             'married' => 'متزوج/ة',
             'widowed' => 'ارمل/ة',
+            'divorced' => 'مطلق/ة',
+            'polygamous' => 'متعدد الزوجات',
             default => '-',
         };
     }
@@ -452,7 +536,7 @@ class AidDistributionController extends Controller
 
         // البحث في العمودين: national_id أو spouse_national_id
         $primaryMatch = Family::query()->where('national_id', $id)->first();
-        $spouseMatch = Family::query()->where('spouse_national_id', $id)->first();
+        $spouseMatch = $this->findFamilyBySpouseNationalId($id);
 
         // تحديد نوع التطابق
         if ($primaryMatch) {
@@ -481,6 +565,9 @@ class AidDistributionController extends Controller
                     'aid_value' => $dist->aid_mode === 'cash'
                         ? number_format($dist->cash_amount, 2) . ' ₪'
                         : ($dist->aidItem?->name ?? '-'),
+                    'quantity' => $dist->aid_mode === 'in_kind' && $dist->quantity !== null
+                        ? number_format((float) $dist->quantity, 2)
+                        : '-',
                 ];
             });
 
@@ -497,8 +584,9 @@ class AidDistributionController extends Controller
                 'family_members_count' => $family->family_members_count,
                 'address' => $family->address,
                 'marital_status' => $family->marital_status,
-                'spouse_national_id' => $family->spouse_national_id,
-                'spouse_full_name' => $family->spouse_full_name,
+                'spouses' => $this->getFamilySpouses($family),
+                'spouse_national_id' => $this->getFamilySpouses($family)[0]['national_id'] ?? null,
+                'spouse_full_name' => $this->getFamilySpouses($family)[0]['full_name'] ?? null,
             ],
             'last_10_aids' => $aids,
             'total_aids' => $aidsTotal,
@@ -528,6 +616,9 @@ class AidDistributionController extends Controller
                     'aid_value' => $dist->aid_mode === 'cash'
                         ? number_format($dist->cash_amount, 2) . ' ₪'
                         : ($dist->aidItem?->name ?? '-'),
+                    'quantity' => $dist->aid_mode === 'in_kind' && $dist->quantity !== null
+                        ? number_format((float) $dist->quantity, 2)
+                        : '-',
                 ];
             });
 
@@ -554,6 +645,7 @@ class AidDistributionController extends Controller
                 'aid_mode' => $distribution->aid_mode === 'cash' ? 'نقدية' : 'عينية',
                 'cash_amount' => $distribution->cash_amount,
                 'aid_item_name' => $distribution->aidItem?->name ?? '-',
+                'quantity' => $distribution->quantity,
                 'distributed_at' => $distribution->distributed_at?->format('Y-m-d') ?? '-',
                 'notes' => $distribution->notes,
                 'status' => $distribution->status,
@@ -566,10 +658,59 @@ class AidDistributionController extends Controller
                 'family_members_count' => $distribution->family?->family_members_count ?? '-',
                 'address' => $distribution->family?->address ?? '-',
                 'marital_status' => $this->translateMaritalStatus($distribution->family?->marital_status),
-                'spouse_full_name' => $distribution->family?->spouse_full_name ?? '-',
-                'spouse_national_id' => $distribution->family?->spouse_national_id ?? '-',
+                'spouses' => $distribution->family ? $this->getFamilySpouses($distribution->family) : [],
+                'spouse_full_name' => $distribution->family ? ($this->getFamilySpouses($distribution->family)[0]['full_name'] ?? '-') : '-',
+                'spouse_national_id' => $distribution->family ? ($this->getFamilySpouses($distribution->family)[0]['national_id'] ?? '-') : '-',
             ],
         ]);
+    }
+
+    private function findFamilyBySpouseNationalId(string $nationalId): ?Family
+    {
+        return Family::query()
+            ->where(function ($query) use ($nationalId) {
+                $query->where('wife_1_national_id_gen', $nationalId)
+                    ->orWhere('wife_2_national_id_gen', $nationalId)
+                    ->orWhere('wife_3_national_id_gen', $nationalId)
+                    ->orWhere('wife_4_national_id_gen', $nationalId)
+                    // fallback مؤقت للسجلات القديمة قبل الترحيل الكامل
+                    ->orWhere('spouse_national_id', $nationalId);
+            })
+            ->first();
+    }
+
+    private function normalizedSpousesFromInput(array $validated): array
+    {
+        $spouses = collect($validated['spouses'] ?? [])->map(function ($spouse) {
+            $fullName = isset($spouse['full_name']) ? trim((string) $spouse['full_name']) : null;
+            $nationalId = isset($spouse['national_id']) ? trim((string) $spouse['national_id']) : null;
+
+            return [
+                'full_name' => $fullName !== '' ? $fullName : null,
+                'national_id' => $nationalId !== '' ? $nationalId : null,
+            ];
+        });
+
+        // fallback للواجهة القديمة إن أرسلت الحقول المفردة
+        $legacySpouseName = trim((string) ($validated['spouse_name'] ?? ''));
+        $legacySpouseNationalId = trim((string) ($validated['spouse_national_id'] ?? ''));
+        if ($spouses->isEmpty() && ($legacySpouseName !== '' || $legacySpouseNationalId !== '')) {
+            $spouses = collect([[
+                'full_name' => $legacySpouseName !== '' ? $legacySpouseName : null,
+                'national_id' => $legacySpouseNationalId !== '' ? $legacySpouseNationalId : null,
+            ]]);
+        }
+
+        return $spouses
+            ->filter(fn ($spouse) => !empty($spouse['full_name']) || !empty($spouse['national_id']))
+            ->take(4)
+            ->values()
+            ->toArray();
+    }
+
+    private function getFamilySpouses(Family $family): array
+    {
+        return $family->wives;
     }
 
     private function authorizeLookupForAidDistribution(): void

@@ -57,6 +57,7 @@
         $fields = [
             'edit' => 'تعديل',
             'name' => 'اسم نوع المساعدة',
+            'estimated_value' => 'القيمة التقديرية',
             'description' => 'الوصف',
             'is_active_badge' => 'الحالة',
         ];
@@ -217,6 +218,7 @@
                 '#',
                 'edit',
                 'name',
+                'estimated_value',
                 'description',
                 'is_active_badge',
                 'delete'
@@ -275,6 +277,12 @@
                     class: 'enhanced-sticky'
                 },
                 {
+                    data: 'estimated_value_formatted',
+                    name: 'estimated_value',
+                    orderable: false,
+                    class: 'text-center'
+                },
+                {
                     data: 'description',
                     name: 'description',
                     orderable: false
@@ -312,11 +320,12 @@
             const dataForm = {
                 id: '',
                 name: '',
+                estimated_value: '',
                 description: '',
                 is_active: '',
             }
-            const columnsCopy = [1, 2, 3, 4];
-            const columnNamesCopy = ['name', 'description', 'is_active'];
+            const columnsCopy = [1, 2, 3, 4, 5];
+            const columnNamesCopy = ['name', 'estimated_value', 'description', 'is_active'];
         </script>
         <script type="text/javascript" src="{{ asset('js/datatable.js') }}"></script>
 
