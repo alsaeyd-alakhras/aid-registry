@@ -59,7 +59,7 @@
                     </div>
                     <div class="mb-4 form-group col-md-4">
                         <label for="office">المكتب</label>
-                        <select class="text-center form-select" name="office" id="office">
+                        <select class="text-center form-select" name="office_id" id="office">
                             <option value="" label="فتح القائمة">
                                 @foreach ($offices as $office)
                                     <option value="{{ $office->id }}" @selected($office->id == $user->office_id)>

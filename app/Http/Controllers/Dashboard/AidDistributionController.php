@@ -87,8 +87,9 @@ class AidDistributionController extends Controller
             'office_id' => Auth::user()?->office_id,
         ]);
         $familyForm = null;
+        $isEdit = false;
 
-        return view('dashboard.aid_distributions.create', compact('offices', 'aidItems', 'distribution', 'familyForm'));
+        return view('dashboard.aid_distributions.create', compact('offices', 'aidItems', 'distribution', 'familyForm', 'isEdit'));
     }
 
     public function store(Request $request)
@@ -177,8 +178,9 @@ class AidDistributionController extends Controller
         $family = $aidDistribution->family;
         $familyForm = $this->mapFamilyToForm($family);
         $distribution = $aidDistribution;
+        $isEdit = true;
 
-        return view('dashboard.aid_distributions.edit', compact('offices', 'aidItems', 'distribution', 'familyForm'));
+        return view('dashboard.aid_distributions.edit', compact('offices', 'aidItems', 'distribution', 'familyForm', 'isEdit'));
     }
 
     public function show(AidDistribution $aidDistribution)

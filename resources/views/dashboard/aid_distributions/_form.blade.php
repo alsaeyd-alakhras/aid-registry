@@ -1,5 +1,4 @@
 @php
-    $isEdit = isset($distribution) && $distribution->exists;
     $currentUser = auth()->user();
     $isEmployee = $currentUser?->user_type == 'employee';
     $lockedOfficeId = $isEdit ? $distribution->office_id : ($currentUser?->office_id ?? $distribution->office_id);
