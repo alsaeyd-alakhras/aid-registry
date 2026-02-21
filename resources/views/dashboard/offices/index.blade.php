@@ -66,7 +66,7 @@
                 <option value="-1">all</option>
             </select>
         </div>
-        @can('export-excel', 'App\\Models\Executive')
+        @can('export-excel', 'App\\Models\Office')
         {{-- excel export --}}
         <div class="mx-2 nav-item">
             <button type="button" class="text-white btn btn-icon btn-success" id="excel-export" title="تصدير excel">
@@ -77,7 +77,7 @@
             </button>
         </div>
         @endcan
-        @can('create', 'App\\Models\Executive')
+        @can('create', 'App\\Models\Office')
             <div class="mx-2 nav-item">
                 <button type="button" class="m-0 text-white btn btn-primary" id="createNew">
                     <i class="fa-solid fa-plus fe-16"></i> اضافة

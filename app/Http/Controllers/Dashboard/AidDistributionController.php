@@ -223,13 +223,18 @@ class AidDistributionController extends Controller
     {
         $this->authorize('delete', AidDistribution::class);
 
-        $aidDistribution->update([
-            'status' => 'cancelled',
-            'cancelled_at' => now(),
-            'cancelled_by' => Auth::id(),
-        ]);
+        // $aidDistribution->update([
+        //     'status' => 'cancelled',
+        //     'cancelled_at' => now(),
+        //     'cancelled_by' => Auth::id(),
+        // ]);
+        $aidDistribution->delete();
 
-        return redirect()->route('dashboard.aid-distributions.create')->with('success', 'تم إلغاء العملية بنجاح');
+        if(request()->ajax()) {
+            return response()->json(['success' => true]);
+        }
+
+        return redirect()->route('dashboard.aid-distributions.index')->with('success', 'تم حذف العملية بنجاح');
     }
 
     public function getFilterOptions(Request $request, $column)

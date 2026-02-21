@@ -27,14 +27,6 @@
             <div class="card-body">
                 <div class="row">
                     <div class="mb-4 col-md-6">
-                        <x-form.input
-                            name="primary_name"
-                            label="الاسم الرباعي"
-                            :value="$familyForm['primary_name'] ?? ''"
-                            required
-                        />
-                    </div>
-                    <div class="mb-4 col-md-6">
                         <label for="national_id" class="form-label">رقم الهوية <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <input
@@ -52,6 +44,14 @@
                                 <span class="spinner-border spinner-border-sm d-none" role="status"></span>
                             </button>
                         </div>
+                    </div>
+                    <div class="mb-4 col-md-6">
+                        <x-form.input
+                            name="primary_name"
+                            label="الاسم الرباعي"
+                            :value="$familyForm['primary_name'] ?? ''"
+                            required
+                        />
                     </div>
                     <div class="mb-4 col-md-6">
                         <x-form.input
@@ -447,8 +447,7 @@
                 }
             });
 
-            // زر البحث
-            $('#search-family-btn').on('click', function() {
+            function searchFamily() {
                 const nationalId = $('#national_id').val().trim();
                 
                 if (!nationalId) {
@@ -456,7 +455,7 @@
                     return;
                 }
 
-                const $btn = $(this);
+                const $btn = $('#search-family-btn');
                 const $spinner = $btn.find('.spinner-border');
                 const $text = $btn.find('.btn-text');
 
@@ -500,6 +499,15 @@
                         $spinner.addClass('d-none');
                     }
                 });
+            }
+            // زر البحث
+            $('#search-family-btn').on('click', function() {
+                searchFamily();
+            });
+            $('#national_id').on('blur', function() {
+                if ($('#national_id').val().trim()) {
+                    searchFamily();
+                }
             });
 
             // عرض بيانات الأسرة في Sidebar
@@ -566,7 +574,7 @@
                         <div class="list-group-item d-flex justify-content-between align-items-start">
                             <div class="me-auto">
                                 <div class="fw-bold">${aid.office_name}</div>
-                                <small class="text-muted">${aid.distributed_at} - ${aid.aid_mode}</small>
+                                <small>${aid.distributed_at} - ${aid.aid_mode}</small>
                                 <div>${aid.aid_value}</div>
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary view-aid-btn" data-aid-id="${aid.id}">
