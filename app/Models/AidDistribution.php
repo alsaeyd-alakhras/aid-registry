@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Auth;
 
 class AidDistribution extends Model
 {
@@ -52,5 +53,14 @@ class AidDistribution extends Model
     public function canceller(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    public function scopeOfficeEmployee($query)
+    {
+        $user = Auth::user();
+        if($user && $user->user_type == 'employee') {
+            return $query->where('office_id', $user?->office_id);
+        }
+        return $query;
     }
 }

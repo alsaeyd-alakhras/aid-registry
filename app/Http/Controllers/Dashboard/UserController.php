@@ -114,7 +114,8 @@ class UserController extends Controller
         }
         $btn_label = "تعديل";
         $settings_profile = true;
-        return view('dashboard.users.settings', compact('user', 'btn_label', 'settings_profile'));
+        $offices = Office::get();
+        return view('dashboard.users.settings', compact('user', 'btn_label', 'settings_profile', 'offices'));
     }
     /**
      * Show the form for editing the specified resource.

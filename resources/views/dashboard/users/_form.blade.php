@@ -48,6 +48,7 @@
                                 placeholder="****" required />
                         @endif
                     </div>
+                    @if(!isset($settings_profile))
                     <div class="mb-4 form-group col-md-4">
                         <label for="user_type">نوع المستخدم</label>
                         <select class="text-center form-select" name="user_type" id="user_type"
@@ -68,6 +69,7 @@
                                 @endforeach
                         </select>
                     </div>
+                    @endif
                     <x-form.input type="hidden" name="is_active" value="1" />
                 </div>
                 @if(!isset($settings_profile))

@@ -147,7 +147,7 @@
                 <!-- Quick links -->
 
                 <!-- Notification -->
-                <li class="nav-item dropdown-notifications navbar-dropdown dropdown me-3 me-xl-2">
+                {{-- <li class="nav-item dropdown-notifications navbar-dropdown dropdown me-3 me-xl-2">
                     <a class="nav-link btn btn-text-secondary btn-icon rounded-pill dropdown-toggle hide-arrow"
                         href="javascript:void(0);" data-bs-toggle="dropdown" data-bs-auto-close="outside"
                         aria-expanded="false">
@@ -404,7 +404,7 @@
                             </div>
                         </li>
                     </ul>
-                </li>
+                </li> --}}
                 <!--/ Notification -->
 
                 <!-- User -->
@@ -417,7 +417,7 @@
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li>
-                            <a class="mt-0 dropdown-item" href="pages-account-settings-account.html">
+                            <a class="mt-0 dropdown-item" href="{{ route('dashboard.users.show', Auth::user()->id) }}">
                                 <div class="d-flex align-items-center">
                                     <div class="flex-shrink-0 me-2">
                                         <div class="avatar avatar-online">

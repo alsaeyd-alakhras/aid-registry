@@ -19,6 +19,7 @@ class DashboardService
 
     public function getGlobalStats(): array
     {
+        
         return Cache::remember('dashboard:global-stats', self::CACHE_TTL_SECONDS, function () {
             $startCurrentMonth = now()->startOfMonth();
             $endCurrentMonth = now()->endOfMonth();
@@ -26,17 +27,21 @@ class DashboardService
             $endPreviousMonth = now()->subMonthNoOverflow()->endOfMonth();
 
             $currentMonthDistributions = AidDistribution::query()
+                ->officeEmployee()
                 ->whereBetween('distributed_at', [$startCurrentMonth, $endCurrentMonth])
                 ->count();
             $previousMonthDistributions = AidDistribution::query()
+                ->officeEmployee()
                 ->whereBetween('distributed_at', [$startPreviousMonth, $endPreviousMonth])
                 ->count();
 
             $currentMonthCash = (float) AidDistribution::query()
+                ->officeEmployee()
                 ->where('aid_mode', 'cash')
                 ->whereBetween('distributed_at', [$startCurrentMonth, $endCurrentMonth])
                 ->sum('cash_amount');
             $previousMonthCash = (float) AidDistribution::query()
+                ->officeEmployee()
                 ->where('aid_mode', 'cash')
                 ->whereBetween('distributed_at', [$startPreviousMonth, $endPreviousMonth])
                 ->sum('cash_amount');
@@ -53,8 +58,9 @@ class DashboardService
 
             return [
                 'total_families' => Family::query()->count(),
-                'total_distributions' => AidDistribution::query()->count(),
+                'total_distributions' => AidDistribution::query()->officeEmployee()->count(),
                 'total_cash_all_time' => (float) AidDistribution::query()
+                    ->officeEmployee()
                     ->where('aid_mode', 'cash')
                     ->sum('cash_amount'),
                 'current_month_distributions' => $currentMonthDistributions,
@@ -80,6 +86,7 @@ class DashboardService
 
         return Cache::remember("dashboard:monthly-stats:{$year}", self::CACHE_TTL_SECONDS, function () use ($year) {
             $raw = AidDistribution::query()
+                ->officeEmployee()
                 ->selectRaw('MONTH(distributed_at) as month_num')
                 ->selectRaw('COUNT(*) as distributions_count')
                 ->selectRaw("SUM(CASE WHEN aid_mode = 'cash' THEN cash_amount ELSE 0 END) as cash_total")
@@ -154,6 +161,7 @@ class DashboardService
         $key = "dashboard:recent-distributions:page:{$page}";
         $cacheResult = Cache::remember($key, self::CACHE_TTL_SECONDS, function () use ($page) {
             $query = AidDistribution::query()
+                ->officeEmployee()
                 ->with(['family:id,full_name', 'office:id,name', 'aidItem:id,name', 'creator:id,name'])
                 ->orderByDesc('distributed_at')
                 ->orderByDesc('id');

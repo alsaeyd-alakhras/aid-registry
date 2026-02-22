@@ -19,6 +19,12 @@ class AidDistributionController extends Controller
     public function index(Request $request)
     {
         $this->authorizeLookupForAidDistribution();
+        $user = Auth::user();
+        if($user && $user->user_type == 'employee') {
+            $office_id = $user?->office_id;
+        } else {
+            $office_id = null;
+        }
 
         if ($request->ajax()) {
             $year = $request->year ?? Carbon::now()->year;
@@ -37,6 +43,9 @@ class AidDistributionController extends Controller
 
             if ($request->column_filters) {
                 $this->applyColumnFilters($distributions, $request->column_filters);
+            }
+            if ($office_id) {
+                $distributions->where('office_id', $office_id);
             }
 
             $rows = $distributions->get()->map(function (AidDistribution $distribution) {
