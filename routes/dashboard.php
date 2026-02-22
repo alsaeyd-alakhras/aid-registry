@@ -24,6 +24,7 @@ Route::group([
     // Dashboard ************************
     Route::get('/', [HomeController::class,'index'])->name('home');
     Route::get('import', [HomeController::class,'import'])->name('import');
+    Route::post('import-excel', [HomeController::class,'import_excel'])->name('import.excel');
 
     // Logs ************************
     Route::get('logs',[ActivityLogController::class,'index'])->name('logs.index');

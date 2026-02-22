@@ -62,8 +62,7 @@
                 <option value="-1">all</option>
             </select>
         </div>
-        @can('export-excel', 'App\\Models\AidDistribution')
-        {{-- excel export --}}
+        {{-- @can('export-excel', 'App\\Models\AidDistribution')
         <div class="mx-2 nav-item">
             <button type="button" class="text-white btn btn-icon btn-success" id="excel-export" title="تصدير excel">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" width="16" height="16">
@@ -72,10 +71,10 @@
                 </svg>
             </button>
         </div>
-        @endcan
+        @endcan --}}
         @can('import', 'App\\Models\AidDistribution')
         <div class="mx-2 nav-item">
-            <a href="{{ route('dashboard.import') }}" class="m-0 text-white btn btn-primary">
+            <a href="{{ route('dashboard.import') }}" class="m-0 text-white btn btn-success">
                 <i class="fa-solid fa-plus fe-16"></i> استيراد excel
             </a>
         </div>
