@@ -45,7 +45,17 @@ class HomeController extends Controller
             return redirect()->route('dashboard.import')->with('danger', 'الرجاء تحميل الملف');
         }
         $file = $request->file('file');
-        Excel::import(new AidDistributionsImport, $file);
+        $import = new AidDistributionsImport();
+        Excel::import($import, $file);
+
+        $problemRows = $import->getProblemRows();
+        if (!empty($problemRows)) {
+            return redirect()
+                ->route('dashboard.import')
+                ->with('warning', 'تم الاستيراد مع تجاهل بعض السجلات التي ينقصها المكتب أو المؤسسة.')
+                ->with('import_problem_rows', $problemRows);
+        }
+
         return redirect()->route('dashboard.import')->with('success', 'تمت عملية الاستيراد بنجاح');
     }
 

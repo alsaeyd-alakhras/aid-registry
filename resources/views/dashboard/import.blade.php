@@ -35,5 +35,33 @@
                 </form>
             </div>
         </div>
+
+        @if (session('import_problem_rows'))
+            <div class="card import-card overflow-hidden mt-4">
+                <div class="card-header bg-transparent border-bottom py-3">
+                    <h6 class="mb-0">سجلات تم تجاهلها بسبب نقص المكتب أو المؤسسة</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table mb-0 table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>الاسم الرباعي</th>
+                                    <th>رقم الهوية</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (session('import_problem_rows') as $problemRow)
+                                    <tr>
+                                        <td>{{ $problemRow['full_name'] ?? '-' }}</td>
+                                        <td>{{ $problemRow['national_id'] ?? '-' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        @endif
     </div>
 </x-front-layout>

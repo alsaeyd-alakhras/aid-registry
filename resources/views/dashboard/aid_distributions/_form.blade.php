@@ -33,7 +33,7 @@
                                 class="form-control"
                                 id="national_id"
                                 name="national_id"
-                                maxlength="10"
+                                maxlength="9"
                                 value="{{ $familyForm['national_id'] ?? '' }}"
                                 required
                             />
@@ -108,7 +108,7 @@
                                         id="spouses_{{ $wifeIndex }}_national_id"
                                         name="spouses[{{ $wifeIndex }}][national_id]"
                                         label="رقم هوية الزوجة {{ $wifeIndex + 1 }}"
-                                        maxlength="10"
+                                        maxlength="9"
                                         :value="old('spouses.' . $wifeIndex . '.national_id', $familyForm['spouses'][$wifeIndex]['national_id'] ?? '')"
                                     />
                                 </div>

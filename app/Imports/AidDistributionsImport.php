@@ -5,6 +5,7 @@ namespace App\Imports;
 use App\Models\AidDistribution;
 use App\Models\AidItem;
 use App\Models\Family;
+use App\Models\Institution;
 use App\Models\Office;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -16,9 +17,12 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 class AidDistributionsImport implements ToModel, WithHeadingRow, WithChunkReading
 {
     private ?int $creatorId = null;
+    private array $problemRows = [];
     private array $officeIdByLookup = [];
+    private array $institutionIdByLookup = [];
     private array $aidItemIdByLookup = [];
     private bool $officeCacheLoaded = false;
+    private bool $institutionCacheLoaded = false;
     private bool $aidItemCacheLoaded = false;
 
     /**
@@ -33,17 +37,23 @@ class AidDistributionsImport implements ToModel, WithHeadingRow, WithChunkReadin
             return null;
         }
 
+        $fullName = $this->normalizeString($row['alasm_rbaaay'] ?? null);
+        if ($fullName === null) {
+            return null;
+        }
+
         $officeId = $this->resolveOfficeId($row['almktb'] ?? null, $row['mkan_alskn'] ?? null);
+        $institutionId = $this->resolveInstitutionId($row['almoss'] ?? null);
+        if ($officeId === null || $institutionId === null) {
+            $this->registerProblemRow($fullName, $nationalId);
+            return null;
+        }
+
         $aidMode = $this->resolveAidMode($row['noaa_almsaaad'] ?? null);
         $maritalStatus = $this->resolveMaritalStatus($row['alhal_alzogy'] ?? null);
         $spouses = $this->extractSpouses($row);
         if (!in_array($maritalStatus, ['married', 'polygamous'], true)) {
             $spouses = [];
-        }
-
-        $fullName = $this->normalizeString($row['alasm_rbaaay'] ?? null);
-        if ($fullName === null) {
-            throw new \RuntimeException('اسم المستفيد الأساسي مطلوب في ملف الاستيراد.');
         }
 
         $familyPayload = [
@@ -58,7 +68,7 @@ class AidDistributionsImport implements ToModel, WithHeadingRow, WithChunkReadin
             'spouse_national_id' => $spouses[0]['national_id'] ?? null,
         ];
 
-        $distributionPayload = $this->buildDistributionPayload($row, $aidMode, $officeId);
+        $distributionPayload = $this->buildDistributionPayload($row, $aidMode, $officeId, $institutionId);
         $creatorId = $this->resolveCreatorId();
         if (!$creatorId) {
             throw new \RuntimeException('لا يمكن الاستيراد بدون مستخدم مسجّل دخول.');
@@ -92,10 +102,11 @@ class AidDistributionsImport implements ToModel, WithHeadingRow, WithChunkReadin
         return Family::create($familyPayload);
     }
 
-    private function buildDistributionPayload(array $row, string $aidMode, int $officeId): array
+    private function buildDistributionPayload(array $row, string $aidMode, int $officeId, int $institutionId): array
     {
         $payload = [
             'office_id' => $officeId,
+            'institution_id' => $institutionId,
             'aid_mode' => $aidMode,
             'aid_item_id' => null,
             'quantity' => null,
@@ -140,7 +151,7 @@ class AidDistributionsImport implements ToModel, WithHeadingRow, WithChunkReadin
         return $map[$normalized] ?? 'cash';
     }
 
-    private function resolveOfficeId($officeLabel, $locationLabel): int
+    private function resolveOfficeId($officeLabel, $locationLabel): ?int
     {
         $this->loadOfficeCache();
 
@@ -167,7 +178,33 @@ class AidDistributionsImport implements ToModel, WithHeadingRow, WithChunkReadin
             }
         }
 
-        throw new \RuntimeException('تعذر تحديد المكتب من بيانات الملف.');
+        return null;
+    }
+
+    private function resolveInstitutionId($institutionLabel): ?int
+    {
+        $this->loadInstitutionCache();
+
+        $institutionName = $this->normalizeString($institutionLabel);
+        if ($institutionName === null) {
+            return null;
+        }
+
+        $lookupKey = $this->normalizeLookupKey($institutionName);
+        if (isset($this->institutionIdByLookup[$lookupKey])) {
+            return $this->institutionIdByLookup[$lookupKey];
+        }
+
+        $institution = Institution::query()->create([
+            'name' => $institutionName,
+            'is_active' => true,
+            'notes' => null,
+        ]);
+
+        $id = (int) $institution->id;
+        $this->institutionIdByLookup[$lookupKey] = $id;
+
+        return $id;
     }
 
     private function resolveAidItemId($value): ?int
@@ -344,8 +381,41 @@ class AidDistributionsImport implements ToModel, WithHeadingRow, WithChunkReadin
         }
     }
 
+    private function loadInstitutionCache(): void
+    {
+        if ($this->institutionCacheLoaded) {
+            return;
+        }
+
+        $this->institutionCacheLoaded = true;
+        $this->institutionIdByLookup = [];
+
+        $institutions = Institution::query()->get(['id', 'name']);
+        foreach ($institutions as $institution) {
+            $id = (int) $institution->id;
+            $name = $this->normalizeString($institution->name);
+            if ($name !== null) {
+                $this->institutionIdByLookup[$this->normalizeLookupKey($name)] = $id;
+            }
+        }
+    }
+
     public function chunkSize(): int
     {
         return 100;
+    }
+
+    public function getProblemRows(): array
+    {
+        return array_values($this->problemRows);
+    }
+
+    private function registerProblemRow(string $fullName, string $nationalId): void
+    {
+        $key = $fullName . '|' . $nationalId;
+        $this->problemRows[$key] = [
+            'full_name' => $fullName,
+            'national_id' => $nationalId,
+        ];
     }
 }
