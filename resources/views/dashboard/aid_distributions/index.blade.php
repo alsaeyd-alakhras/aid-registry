@@ -109,6 +109,7 @@
             'family_members_count' => 'عدد الأفراد',
             'marital_status' => 'الحالة الزوجية',
             'office_name' => 'المكتب',
+            'institution_name' => 'المؤسسة',
             'aid_mode' => 'نوع المساعدة',
             'aid_value' => 'القيمة/الصنف',
             'quantity' => 'الكمية',
@@ -266,6 +267,7 @@
                 'family_members_count',
                 'marital_status',
                 'office_name',
+                'institution_name',
                 'aid_mode',
                 'aid_value',
                 'quantity',
@@ -307,6 +309,7 @@
                 { data: 'family_members_count', name: 'family_members_count', orderable: false, class: 'text-center' },
                 { data: 'marital_status', name: 'marital_status', orderable: false, class: 'text-center' },
                 { data: 'office_name', name: 'office_name', orderable: false },
+                { data: 'institution_name', name: 'institution_name', orderable: false },
                 {
                     data: 'aid_mode',
                     name: 'aid_mode',
@@ -341,8 +344,8 @@
 
             const SUMMABLE_COLUMNS = { enabled: false, columns: {} };
             const dataForm = {};
-            const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
-            const columnNamesCopy = ['distributed_at', 'primary_name', 'national_id', 'housing_location', 'family_members_count', 'marital_status', 'office_name', 'aid_mode', 'aid_value', 'quantity', 'mobile', 'creator_name'];
+            const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+            const columnNamesCopy = ['distributed_at', 'primary_name', 'national_id', 'housing_location', 'family_members_count', 'marital_status', 'office_name', 'institution_name', 'aid_mode', 'aid_value', 'quantity', 'mobile', 'creator_name'];
         </script>
         <script type="text/javascript" src="{{ asset('js/datatable.js') }}"></script>
     @endpush

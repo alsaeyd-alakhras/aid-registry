@@ -9,6 +9,7 @@ use App\Http\Controllers\Dashboard\AidItemController;
 use App\Http\Controllers\Dashboard\ConstantController;
 use App\Http\Controllers\Dashboard\CurrencyController;
 use App\Http\Controllers\Dashboard\HomeController;
+use App\Http\Controllers\Dashboard\InstitutionController;
 use App\Http\Controllers\Dashboard\UserController;
 use App\Http\Controllers\Dashboard\OfficeController;
 use App\Http\Controllers\Dashboard\ReportController;
@@ -43,6 +44,7 @@ Route::group([
 
     // Merchants ************************    
     Route::get('offices-filters/{cloumn}', [OfficeController::class, 'getFilterOptions'])->name('offices.filters');
+    Route::get('institutions-filters/{cloumn}', [InstitutionController::class, 'getFilterOptions'])->name('institutions.filters');
     Route::get('aid-items-filters/{cloumn}', [AidItemController::class, 'getFilterOptions'])->name('aid-items.filters');
     Route::get('aid-distributions-filters/{cloumn}', [AidDistributionController::class, 'getFilterOptions'])->name('aid-distributions.filters');
 
@@ -58,6 +60,7 @@ Route::group([
     Route::resources([
         'users' => UserController::class,
         'offices' => OfficeController::class,
+        'institutions' => InstitutionController::class,
         'aid-items' => AidItemController::class,
         'aid-distributions' => AidDistributionController::class,
     ]);

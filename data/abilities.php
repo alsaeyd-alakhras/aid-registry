@@ -31,6 +31,13 @@
             'update' => 'تعديل',
             'delete' => 'حذف',
         ],
+        'institutions' => [
+            'name' => 'المؤسسات',
+            'view' => 'عرض',
+            'create' => 'اضافة',
+            'update' => 'تعديل',
+            'delete' => 'حذف',
+        ],
         'aiditems' => [
             'name' => 'أنواع المساعدات',
             'view' => 'عرض',

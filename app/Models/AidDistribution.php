@@ -11,6 +11,7 @@ class AidDistribution extends Model
     protected $fillable = [
         'family_id',
         'office_id',
+        'institution_id',
         'aid_mode',
         'aid_item_id',
         'quantity',
@@ -38,6 +39,11 @@ class AidDistribution extends Model
     public function office(): BelongsTo
     {
         return $this->belongsTo(Office::class);
+    }
+
+    public function institution(): BelongsTo
+    {
+        return $this->belongsTo(Institution::class);
     }
 
     public function aidItem(): BelongsTo

@@ -54,6 +54,14 @@
                         </a>
                     </li>
                     @endcan
+                    @can('view','App\\Models\Institution')
+                    <li class="menu-item {{ request()->is('institutions/*') || request()->is('institutions') ? 'active' : '' }}">
+                        <a href="{{ route('dashboard.institutions.index') }}" class="menu-link">
+                            <i class="fa-solid fa-landmark me-2"></i>
+                            <div data-i18n="institutions">المؤسسات</div>
+                        </a>
+                    </li>
+                    @endcan
                     @can('view','App\\Models\AidItem')
                     <li class="menu-item {{ request()->is('aid-items/*') || request()->is('aid-items') ? 'active' : '' }}">
                         <a href="{{ route('dashboard.aid-items.index') }}" class="menu-link">

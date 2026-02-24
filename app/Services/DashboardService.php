@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Models\AidDistribution;
 use App\Models\AidItem;
 use App\Models\Family;
+use App\Models\Institution;
 use App\Models\Office;
 use Carbon\Carbon;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class DashboardService
@@ -55,6 +57,8 @@ class DashboardService
 
             $activeOffices = Office::query()->where('is_active', true)->count();
             $inactiveOffices = Office::query()->where('is_active', false)->count();
+            $activeInstitutions = Institution::query()->where('is_active', true)->count();
+            $inactiveInstitutions = Institution::query()->where('is_active', false)->count();
 
             return [
                 'total_families' => Family::query()->count(),
@@ -66,6 +70,7 @@ class DashboardService
                 'current_month_distributions' => $currentMonthDistributions,
                 'current_month_cash' => $currentMonthCash,
                 'active_offices' => $activeOffices,
+                'total_institutions' => Institution::query()->count(),
                 'comparison' => [
                     'total_families' => $this->buildComparison($newFamiliesCurrentMonth, $newFamiliesPreviousMonth, 'عن الأسر الجديدة بالشهر الماضي'),
                     'total_distributions' => $this->buildComparison($currentMonthDistributions, $previousMonthDistributions, 'عن الشهر الماضي'),
@@ -75,6 +80,9 @@ class DashboardService
                     'active_offices' => $inactiveOffices > 0
                         ? "{$inactiveOffices} مكتب غير مفعل"
                         : 'كل المكاتب مفعلة',
+                    'total_institutions' => $inactiveInstitutions > 0
+                        ? "{$activeInstitutions} مؤسسة مفعلة / {$inactiveInstitutions} غير مفعلة"
+                        : 'كل المؤسسات مفعلة',
                 ],
             ];
         });
@@ -185,6 +193,32 @@ class DashboardService
         );
     }
 
+    public function getInstitutionStats(): LengthAwarePaginator
+    {
+        $page = request()->integer('institution_page', 1);
+        $employeeOfficeId = $this->getEmployeeOfficeId();
+        $officeKey = $employeeOfficeId ?: 'all';
+
+        $rows = Cache::remember("dashboard:institution-stats:{$officeKey}", self::CACHE_TTL_SECONDS, function () use ($employeeOfficeId) {
+            return Institution::query()
+                ->leftJoin('aid_distributions', function ($join) use ($employeeOfficeId) {
+                    $join->on('aid_distributions.institution_id', '=', 'institutions.id');
+                    if ($employeeOfficeId) {
+                        $join->where('aid_distributions.office_id', '=', $employeeOfficeId);
+                    }
+                })
+                ->select('institutions.id', 'institutions.name')
+                ->selectRaw('COUNT(aid_distributions.id) as total_distributions')
+                ->selectRaw("SUM(CASE WHEN aid_distributions.aid_mode = 'cash' THEN aid_distributions.cash_amount ELSE 0 END) as total_spent_cash")
+                ->selectRaw("SUM(CASE WHEN aid_distributions.aid_mode = 'in_kind' AND aid_distributions.quantity IS NOT NULL THEN aid_distributions.quantity ELSE 0 END) as total_spent_quantity")
+                ->groupBy('institutions.id', 'institutions.name')
+                ->orderByDesc('total_spent_cash')
+                ->get();
+        });
+
+        return $this->paginateCollection($rows, self::TABLE_PER_PAGE, $page, 'institution_page');
+    }
+
     private function paginateCollection(Collection $rows, int $perPage, int $page, string $pageName): LengthAwarePaginator
     {
         $items = $rows->forPage($page, $perPage)->values();
@@ -216,5 +250,15 @@ class DashboardService
         $sign = $change > 0 ? '+' : '';
 
         return "{$sign}" . number_format($change, 1) . "% {$suffix}";
+    }
+
+    private function getEmployeeOfficeId(): ?int
+    {
+        $user = Auth::user();
+        if ($user && $user->user_type === 'employee') {
+            return $user->office_id ? (int) $user->office_id : null;
+        }
+
+        return null;
     }
 }

@@ -93,6 +93,13 @@
                 <div class="kpi-sub">{{ $globalStats['comparison']['active_offices'] }}</div>
             </div>
         </div>
+        <div class="col-xl-2 col-md-4 col-sm-6">
+            <div class="p-3 card kpi-card h-100">
+                <div class="mb-1 text-muted">إجمالي المؤسسات</div>
+                <div class="kpi-value">{{ $formatCount($globalStats['total_institutions']) }}</div>
+                <div class="kpi-sub">{{ $globalStats['comparison']['total_institutions'] }}</div>
+            </div>
+        </div>
     </div>
 
     <div class="mb-4 card section-card">
@@ -182,6 +189,43 @@
                     {{ $topAidItems->appends(request()->except('aid_item_page'))->links() }}
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="mt-4 card section-card">
+        <div class="py-3 card-header">
+            <h6 class="mb-0">المؤسسات والمصروف عليها</h6>
+        </div>
+        <div class="p-0 card-body">
+            <div class="table-responsive">
+                <table class="table mb-0 table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>المؤسسة</th>
+                            <th>عدد عمليات الصرف</th>
+                            <th>المنصرف النقدي</th>
+                            <th>الكمية المصروفة</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($institutionStats as $institution)
+                            <tr>
+                                <td>{{ $institution->name }}</td>
+                                <td>{{ $formatCount($institution->total_distributions ?? 0) }}</td>
+                                <td class="cash-text">{{ $formatMoney($institution->total_spent_cash ?? 0) }} ₪</td>
+                                <td>{{ number_format((float) ($institution->total_spent_quantity ?? 0), 2) }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="4" class="py-4 text-center text-muted">لا توجد بيانات مؤسسات لعرضها</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="pt-3 bg-white card-footer">
+            {{ $institutionStats->appends(request()->except('institution_page'))->links() }}
         </div>
     </div>
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AidDistribution;
 use App\Models\AidItem;
 use App\Models\Family;
+use App\Models\Institution;
 use App\Models\Office;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -30,7 +31,7 @@ class AidDistributionController extends Controller
             $year = $request->year ?? Carbon::now()->year;
 
             $distributions = AidDistribution::query()
-                ->with(['family', 'office', 'aidItem', 'creator'])
+                ->with(['family', 'office', 'institution', 'aidItem', 'creator'])
                 ->whereYear('distributed_at', $year)
                 ->orderBy('distributed_at', 'desc');
 
@@ -60,6 +61,7 @@ class AidDistributionController extends Controller
                     'family_members_count' => $family?->family_members_count ?? '-',
                     'marital_status' => $this->translateMaritalStatus($family?->marital_status),
                     'office_name' => $distribution->office?->name ?? '-',
+                    'institution_name' => $distribution->institution?->name ?? '-',
                     'aid_mode' => $distribution->aid_mode,
                     'aid_value' => $distribution->aid_mode === 'cash'
                         ? ($distribution->cash_amount ?? 0)
@@ -91,6 +93,7 @@ class AidDistributionController extends Controller
         $this->authorize('create', AidDistribution::class);
 
         $offices = Office::query()->where('is_active', true)->orderBy('name')->get();
+        $institutions = Institution::query()->where('is_active', true)->orderBy('name')->get();
         $aidItems = AidItem::query()->where('is_active', true)->orderBy('name')->get();
 
         $distribution = new AidDistribution([
@@ -101,7 +104,7 @@ class AidDistributionController extends Controller
         $familyForm = null;
         $isEdit = false;
 
-        return view('dashboard.aid_distributions.create', compact('offices', 'aidItems', 'distribution', 'familyForm', 'isEdit'));
+        return view('dashboard.aid_distributions.create', compact('offices', 'institutions', 'aidItems', 'distribution', 'familyForm', 'isEdit'));
     }
 
     public function store(Request $request)
@@ -119,6 +122,7 @@ class AidDistributionController extends Controller
             AidDistribution::create([
                 'family_id' => $family->id,
                 'office_id' => $officeId,
+                'institution_id' => $validated['institution_id'],
                 'aid_mode' => $validated['aid_mode'],
                 'aid_item_id' => $validated['aid_mode'] === 'in_kind' ? $validated['aid_item_id'] : null,
                 'quantity' => $validated['aid_mode'] === 'in_kind' ? $validated['quantity'] : null,
@@ -186,6 +190,7 @@ class AidDistributionController extends Controller
         $this->authorize('update', AidDistribution::class);
 
         $offices = Office::query()->where('is_active', true)->orderBy('name')->get();
+        $institutions = Institution::query()->where('is_active', true)->orderBy('name')->get();
         $aidItems = AidItem::query()->where('is_active', true)->orderBy('name')->get();
 
         $family = $aidDistribution->family;
@@ -193,7 +198,7 @@ class AidDistributionController extends Controller
         $distribution = $aidDistribution;
         $isEdit = true;
 
-        return view('dashboard.aid_distributions.edit', compact('offices', 'aidItems', 'distribution', 'familyForm', 'isEdit'));
+        return view('dashboard.aid_distributions.edit', compact('offices', 'institutions', 'aidItems', 'distribution', 'familyForm', 'isEdit'));
     }
 
     public function show(AidDistribution $aidDistribution)
@@ -216,6 +221,7 @@ class AidDistributionController extends Controller
 
             $aidDistribution->update([
                 'office_id' => $officeId,
+                'institution_id' => $validated['institution_id'],
                 'aid_mode' => $validated['aid_mode'],
                 'aid_item_id' => $validated['aid_mode'] === 'in_kind' ? $validated['aid_item_id'] : null,
                 'quantity' => $validated['aid_mode'] === 'in_kind' ? $validated['quantity'] : null,
@@ -260,7 +266,7 @@ class AidDistributionController extends Controller
         $year = $request->year ?? Carbon::now()->year;
 
         $query = AidDistribution::query()
-            ->with(['family', 'office', 'aidItem', 'creator'])
+            ->with(['family', 'office', 'institution', 'aidItem', 'creator'])
             ->whereYear('distributed_at', $year);
 
         if ($request->from_date) {
@@ -278,6 +284,7 @@ class AidDistributionController extends Controller
         $options = match ($column) {
             'distributed_at' => $rows->pluck('distributed_at')->filter()->map(fn ($d) => $d->format('Y-m-d'))->unique()->values()->toArray(),
             'office_name' => $rows->pluck('office.name')->filter()->unique()->values()->toArray(),
+            'institution_name' => $rows->pluck('institution.name')->filter()->unique()->values()->toArray(),
             'aid_mode' => $rows->pluck('aid_mode')->filter()->unique()->values()->toArray(),
             'aid_value' => $rows->map(function (AidDistribution $d) {
                 return $d->aid_mode === 'cash' ? (string) ($d->cash_amount ?? 0) : ($d->aidItem?->name ?? null);
@@ -318,6 +325,7 @@ class AidDistributionController extends Controller
             'spouses.*.national_id' => 'nullable|string|max:20',
 
             'office_id' => 'required|exists:offices,id',
+            'institution_id' => 'required|exists:institutions,id',
             'aid_mode' => 'required|in:cash,in_kind',
             'cash_amount' => 'nullable|numeric|min:0|required_if:aid_mode,cash',
             'aid_item_id' => 'nullable|exists:aid_items,id|required_if:aid_mode,in_kind',
@@ -474,6 +482,9 @@ class AidDistributionController extends Controller
                 case 'office_name':
                     $query->whereHas('office', fn ($q) => $q->whereIn('name', $filteredValues));
                     break;
+                case 'institution_name':
+                    $query->whereHas('institution', fn ($q) => $q->whereIn('name', $filteredValues));
+                    break;
                 case 'creator_name':
                     $query->whereHas('creator', fn ($q) => $q->whereIn('name', $filteredValues));
                     break;
@@ -560,7 +571,7 @@ class AidDistributionController extends Controller
 
         // جلب آخر 10 مساعدات (status=active فقط)
         $aids = $family->distributions()
-            ->with(['office', 'aidItem'])
+            ->with(['office', 'institution', 'aidItem'])
             ->where('status', 'active')
             ->orderBy('distributed_at', 'desc')
             ->limit(10)
@@ -569,6 +580,7 @@ class AidDistributionController extends Controller
                 return [
                     'id' => $dist->id,
                     'office_name' => $dist->office?->name ?? '-',
+                    'institution_name' => $dist->institution?->name ?? '-',
                     'distributed_at' => $dist->distributed_at?->format('Y-m-d') ?? '-',
                     'aid_mode' => $dist->aid_mode === 'cash' ? 'نقدية' : 'عينية',
                     'aid_value' => $dist->aid_mode === 'cash'
@@ -612,7 +624,7 @@ class AidDistributionController extends Controller
         $family = Family::findOrFail($familyId);
 
         $aids = $family->distributions()
-            ->with(['office', 'aidItem'])
+            ->with(['office', 'institution', 'aidItem'])
             ->where('status', 'active')
             ->orderBy('distributed_at', 'desc')
             ->get()
@@ -620,6 +632,7 @@ class AidDistributionController extends Controller
                 return [
                     'id' => $dist->id,
                     'office_name' => $dist->office?->name ?? '-',
+                    'institution_name' => $dist->institution?->name ?? '-',
                     'distributed_at' => $dist->distributed_at?->format('Y-m-d') ?? '-',
                     'aid_mode' => $dist->aid_mode === 'cash' ? 'نقدية' : 'عينية',
                     'aid_value' => $dist->aid_mode === 'cash'
@@ -644,13 +657,14 @@ class AidDistributionController extends Controller
     {
         $this->authorizeLookupForAidDistribution();
 
-        $distribution = AidDistribution::with(['family', 'office', 'aidItem', 'creator'])
+        $distribution = AidDistribution::with(['family', 'office', 'institution', 'aidItem', 'creator'])
             ->findOrFail($id);
 
         return response()->json([
             'distribution' => [
                 'id' => $distribution->id,
                 'office_name' => $distribution->office?->name ?? '-',
+                'institution_name' => $distribution->institution?->name ?? '-',
                 'aid_mode' => $distribution->aid_mode === 'cash' ? 'نقدية' : 'عينية',
                 'cash_amount' => $distribution->cash_amount,
                 'aid_item_name' => $distribution->aidItem?->name ?? '-',

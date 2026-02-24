@@ -167,6 +167,28 @@
                     @endif
                 </div>
                 <div class="mb-4">
+                    <label class="form-label" for="institution_id">المؤسسة</label>
+                    <select
+                        id="institution_id"
+                        name="institution_id"
+                        class="form-select @error('institution_id') is-invalid @enderror"
+                        required
+                    >
+                        <option value="" @selected(old('institution_id', $distribution->institution_id) == null)>إختر القيمة</option>
+                        @foreach ($institutions as $institution)
+                            <option
+                                value="{{ $institution->id }}"
+                                @selected(old('institution_id', $distribution->institution_id) == $institution->id)
+                            >
+                                {{ $institution->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('institution_id')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+                <div class="mb-4">
                     <x-form.select
                         name="aid_mode"
                         id="aid_mode"
@@ -307,6 +329,9 @@
                         <h6 class="text-muted mb-3">بيانات العملية</h6>
                         <div class="mb-2">
                             <strong>المكتب:</strong> <span id="modal-office"></span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>المؤسسة:</strong> <span id="modal-institution"></span>
                         </div>
                         <div class="mb-2">
                             <strong>نوع المساعدة:</strong> <span id="modal-aid-mode"></span>
@@ -750,6 +775,8 @@
                         <div class="list-group-item d-flex justify-content-between align-items-start">
                             <div class="me-auto">
                                 <div class="fw-bold">${aid.office_name}</div>
+                                <small>${aid.institution_name || '-'}</small>
+                                <br>
                                 <small>${aid.distributed_at} - ${aid.aid_mode}</small>
                                 <div>${aid.aid_value}</div>
                                 ${quantityBadge}
@@ -856,6 +883,7 @@
 
                         // بيانات العملية
                         $('#modal-office').text(dist.office_name);
+                        $('#modal-institution').text(dist.institution_name || '-');
                         $('#modal-aid-mode').text(dist.aid_mode);
                         $('#modal-aid-value').text(
                             dist.aid_mode === 'نقدية' 

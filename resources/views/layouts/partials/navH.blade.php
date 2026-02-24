@@ -22,6 +22,32 @@
         <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
             <ul class="flex-row navbar-nav align-items-center ms-auto">
                 {{ $extra_nav ?? '' }}
+                @if(Auth::user()->can('view', 'App\\Models\\Office') || Auth::user()->can('view', 'App\\Models\\Institution'))
+                    <li class="nav-item dropdown me-2">
+                        <a class="nav-link btn btn-text-secondary btn-icon rounded-pill dropdown-toggle hide-arrow"
+                            href="javascript:void(0);" data-bs-toggle="dropdown" aria-expanded="false" title="البيانات">
+                            <i class="ti ti-database ti-md"></i>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            @can('view', 'App\\Models\\Office')
+                                <li>
+                                    <a class="dropdown-item" href="{{ route('dashboard.offices.index') }}">
+                                        <i class="fa-solid fa-building me-2"></i>
+                                        <span class="align-middle">المكاتب</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('view', 'App\\Models\\Institution')
+                                <li>
+                                    <a class="dropdown-item" href="{{ route('dashboard.institutions.index') }}">
+                                        <i class="fa-solid fa-landmark me-2"></i>
+                                        <span class="align-middle">المؤسسات</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                @endif
                 <!-- Search -->
                 {{-- <li class="nav-item navbar-search-wrapper">
                     <a class="nav-link btn btn-text-secondary btn-icon rounded-pill search-toggler"

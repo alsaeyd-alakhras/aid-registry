@@ -19,6 +19,7 @@ class HomeController extends Controller
         $globalStats = $dashboardService->getGlobalStats();
         $monthlyStats = $dashboardService->getMonthlyStats();
         $officeStats = $dashboardService->getOfficeStats();
+        $institutionStats = $dashboardService->getInstitutionStats();
         $topAidItems = $dashboardService->getTopAidItems();
         $recentDistributions = $dashboardService->getRecentDistributions();
 
@@ -27,6 +28,7 @@ class HomeController extends Controller
             'globalStats',
             'monthlyStats',
             'officeStats',
+            'institutionStats',
             'topAidItems',
             'recentDistributions'
         ));
