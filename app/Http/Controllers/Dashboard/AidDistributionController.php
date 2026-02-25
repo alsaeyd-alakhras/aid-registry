@@ -8,6 +8,8 @@ use App\Models\AidItem;
 use App\Models\Family;
 use App\Models\Institution;
 use App\Models\Office;
+use App\Models\Project;
+use App\Services\ProjectConsumptionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -95,6 +97,7 @@ class AidDistributionController extends Controller
         $offices = Office::query()->where('is_active', true)->orderBy('name')->get();
         $institutions = Institution::query()->where('is_active', true)->orderBy('name')->get();
         $aidItems = AidItem::query()->where('is_active', true)->orderBy('name')->get();
+        $projects = Project::query()->orderBy('project_number')->get();
 
         $distribution = new AidDistribution([
             'aid_mode' => 'cash',
@@ -104,86 +107,32 @@ class AidDistributionController extends Controller
         $familyForm = null;
         $isEdit = false;
 
-        return view('dashboard.aid_distributions.create', compact('offices', 'institutions', 'aidItems', 'distribution', 'familyForm', 'isEdit'));
+        return view('dashboard.aid_distributions.create', compact('offices', 'institutions', 'aidItems', 'projects', 'distribution', 'familyForm', 'isEdit'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ProjectConsumptionService $consumptionService)
     {
         $this->authorize('create', AidDistribution::class);
 
-        $validated = $this->validateForm($request);
-        $officeId = $this->resolveOfficeIdForStore($validated);
-
-        DB::beginTransaction();
         try {
-            $family = $this->resolveFamilyForDistribution($validated);
+            $validated = $this->validateForm($request);
+            $validated['office_id'] = $this->resolveOfficeIdForStore($validated);
 
-            // إنشاء عملية الصرف
-            AidDistribution::create([
-                'family_id' => $family->id,
-                'office_id' => $officeId,
-                'institution_id' => $validated['institution_id'],
-                'aid_mode' => $validated['aid_mode'],
-                'aid_item_id' => $validated['aid_mode'] === 'in_kind' ? $validated['aid_item_id'] : null,
-                'quantity' => $validated['aid_mode'] === 'in_kind' ? $validated['quantity'] : null,
-                'cash_amount' => $validated['aid_mode'] === 'cash' ? $validated['cash_amount'] : null,
-                'distributed_at' => !empty($validated['distributed_date'])
-                    ? Carbon::parse($validated['distributed_date'])->startOfDay()
-                    : now()->startOfDay(),
-                'created_by' => Auth::id(),
-                'notes' => $validated['distribution_notes'] ?? null,
-            ]);
+            $consumptionService->createDistribution($validated);
 
-            DB::commit();
+            return redirect()->route('dashboard.aid-distributions.index')
+                ->with('success', 'تم حفظ عملية المساعدة بنجاح ✓');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()->back()
+                ->withErrors($e->errors())
+                ->withInput();
         } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
+            return redirect()->back()
+                ->with('danger', 'حدث خطأ أثناء حفظ المساعدة: ' . $e->getMessage())
+                ->withInput();
         }
-
-        return redirect()->route('dashboard.aid-distributions.index')->with('success', 'تم حفظ عملية المساعدة بنجاح');
     }
 
-    /**
-     * تحديد الأسرة المناسبة بناءً على منطق البحث والـ resolution_mode
-     */
-    private function resolveFamilyForDistribution(array $validated): Family
-    {
-        $nationalId = $validated['national_id'];
-        $resolutionMode = $validated['resolution_mode'] ?? null;
-
-        // البحث عن تطابق
-        $primaryMatch = Family::query()->where('national_id', $nationalId)->first();
-        $spouseMatch = $this->findFamilyBySpouseNationalId($nationalId);
-
-        // الحالة 1: primary_match
-        if ($primaryMatch) {
-            // تحديث طبيعي
-            $primaryMatch->update($this->extractFamilyData($validated));
-            return $primaryMatch;
-        }
-
-        // الحالة 2: spouse_match
-        if ($spouseMatch) {
-            // يجب أن يكون resolution_mode موجود
-            if (!$resolutionMode) {
-                throw new \Exception('يجب اختيار طريقة التعامل مع الأسرة الموجودة');
-            }
-
-            if ($resolutionMode === 'attach_to_existing') {
-                // إضافة المساعدة للأسرة القديمة فقط (بدون تحديث)
-                return $spouseMatch;
-            }
-
-            if ($resolutionMode === 'create_new_family') {
-                // إنشاء أسرة جديدة
-                return Family::create($this->extractFamilyData($validated));
-            }
-        }
-
-        // الحالة 3: no_match
-        // إنشاء أسرة جديدة
-        return Family::create($this->extractFamilyData($validated));
-    }
 
     public function edit(AidDistribution $aidDistribution)
     {
@@ -192,13 +141,14 @@ class AidDistributionController extends Controller
         $offices = Office::query()->where('is_active', true)->orderBy('name')->get();
         $institutions = Institution::query()->where('is_active', true)->orderBy('name')->get();
         $aidItems = AidItem::query()->where('is_active', true)->orderBy('name')->get();
+        $projects = Project::query()->orderBy('project_number')->get();
 
         $family = $aidDistribution->family;
         $familyForm = $this->mapFamilyToForm($family);
         $distribution = $aidDistribution;
         $isEdit = true;
 
-        return view('dashboard.aid_distributions.edit', compact('offices', 'institutions', 'aidItems', 'distribution', 'familyForm', 'isEdit'));
+        return view('dashboard.aid_distributions.edit', compact('offices', 'institutions', 'aidItems', 'projects', 'distribution', 'familyForm', 'isEdit'));
     }
 
     public function show(AidDistribution $aidDistribution)
@@ -208,49 +158,34 @@ class AidDistributionController extends Controller
         return redirect()->route('dashboard.aid-distributions.edit', $aidDistribution->id);
     }
 
-    public function update(Request $request, AidDistribution $aidDistribution)
+    public function update(Request $request, AidDistribution $aidDistribution, ProjectConsumptionService $consumptionService)
     {
         $this->authorize('update', AidDistribution::class);
 
-        $validated = $this->validateForm($request);
-        $officeId = $this->resolveOfficeIdForUpdate($validated, $aidDistribution);
-
-        DB::beginTransaction();
         try {
-            $aidDistribution->family->update($this->extractFamilyData($validated));
+            $validated = $this->validateForm($request, $aidDistribution);
+            $validated['office_id'] = $this->resolveOfficeIdForUpdate($validated, $aidDistribution);
 
-            $aidDistribution->update([
-                'office_id' => $officeId,
-                'institution_id' => $validated['institution_id'],
-                'aid_mode' => $validated['aid_mode'],
-                'aid_item_id' => $validated['aid_mode'] === 'in_kind' ? $validated['aid_item_id'] : null,
-                'quantity' => $validated['aid_mode'] === 'in_kind' ? $validated['quantity'] : null,
-                'cash_amount' => $validated['aid_mode'] === 'cash' ? $validated['cash_amount'] : null,
-                'distributed_at' => !empty($validated['distributed_date'])
-                    ? Carbon::parse($validated['distributed_date'])->startOfDay()
-                    : $aidDistribution->distributed_at,
-                'notes' => $validated['distribution_notes'] ?? null,
-            ]);
+            $consumptionService->updateDistribution($aidDistribution, $validated);
 
-            DB::commit();
+            return redirect()->route('dashboard.aid-distributions.index')
+                ->with('success', 'تم تحديث العملية بنجاح ✓');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()->back()
+                ->withErrors($e->errors())
+                ->withInput();
         } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
+            return redirect()->back()
+                ->with('danger', 'حدث خطأ أثناء تحديث المساعدة: ' . $e->getMessage())
+                ->withInput();
         }
-
-        return redirect()->route('dashboard.aid-distributions.index')->with('success', 'تم تحديث العملية بنجاح');
     }
 
-    public function destroy(AidDistribution $aidDistribution)
+    public function destroy(AidDistribution $aidDistribution, ProjectConsumptionService $consumptionService)
     {
         $this->authorize('delete', AidDistribution::class);
 
-        // $aidDistribution->update([
-        //     'status' => 'cancelled',
-        //     'cancelled_at' => now(),
-        //     'cancelled_by' => Auth::id(),
-        // ]);
-        $aidDistribution->delete();
+        $consumptionService->deleteDistribution($aidDistribution);
 
         if(request()->ajax()) {
             return response()->json(['success' => true]);
@@ -307,8 +242,14 @@ class AidDistributionController extends Controller
         return response()->json($options);
     }
 
-    private function validateForm(Request $request): array
+    private function validateForm(Request $request, ?AidDistribution $aidDistribution = null): array
     {
+        $projectIdRule = 'required|exists:projects,id';
+        
+        if ($aidDistribution && $aidDistribution->project_id === null) {
+            $projectIdRule = 'nullable|exists:projects,id';
+        }
+
         $validated = $request->validate([
             'family_id' => 'nullable|exists:families,id',
             'resolution_mode' => 'nullable|in:attach_to_existing,create_new_family',
@@ -326,6 +267,7 @@ class AidDistributionController extends Controller
 
             'office_id' => 'required|exists:offices,id',
             'institution_id' => 'required|exists:institutions,id',
+            'project_id' => $projectIdRule,
             'aid_mode' => 'required|in:cash,in_kind',
             'cash_amount' => 'nullable|numeric|min:0|required_if:aid_mode,cash',
             'aid_item_id' => 'nullable|exists:aid_items,id|required_if:aid_mode,in_kind',

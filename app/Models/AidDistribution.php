@@ -12,6 +12,7 @@ class AidDistribution extends Model
         'family_id',
         'office_id',
         'institution_id',
+        'project_id',
         'aid_mode',
         'aid_item_id',
         'quantity',
@@ -59,6 +60,11 @@ class AidDistribution extends Model
     public function canceller(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class);
     }
 
     public function scopeOfficeEmployee($query)

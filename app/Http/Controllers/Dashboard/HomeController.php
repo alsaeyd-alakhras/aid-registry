@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Dashboard;
 use App\Http\Controllers\Controller;
 use App\Imports\AidDistributionsImport;
 use App\Models\AidDistribution;
+use App\Models\AidDistributionImportBatch;
+use App\Services\AidDistributionImportService;
 use App\Services\DashboardService;
+use App\Services\ProjectConsumptionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
@@ -22,6 +25,7 @@ class HomeController extends Controller
         $institutionStats = $dashboardService->getInstitutionStats();
         $topAidItems = $dashboardService->getTopAidItems();
         $recentDistributions = $dashboardService->getRecentDistributions();
+        $projectStats = $dashboardService->getProjectStats();
 
         return view('dashboard.index', compact(
             'year',
@@ -30,33 +34,135 @@ class HomeController extends Controller
             'officeStats',
             'institutionStats',
             'topAidItems',
-            'recentDistributions'
+            'recentDistributions',
+            'projectStats'
         ));
     }
 
-    public function import()
+    public function refreshDashboardCache(DashboardService $dashboardService)
     {
-        return view('dashboard.import');
+        $dashboardService->clearDashboardCache();
+
+        return redirect()
+            ->route('dashboard.home')
+            ->with('success', 'تم تحديث كاش الإحصائيات بنجاح');
     }
 
-    public function import_excel(Request $request){
-        $this->authorize('import', AidDistribution::class);
-        if(!$request->hasFile('file')){
-            return redirect()->route('dashboard.import')->with('danger', 'الرجاء تحميل الملف');
-        }
-        $file = $request->file('file');
-        $import = new AidDistributionsImport();
-        Excel::import($import, $file);
+    public function import(Request $request)
+    {
+        $batchUuid = $request->query('batch');
+        $batch = null;
 
-        $problemRows = $import->getProblemRows();
-        if (!empty($problemRows)) {
+        if ($batchUuid) {
+            $batch = AidDistributionImportBatch::query()
+                ->where('uuid', $batchUuid)
+                ->with(['rows' => function ($q) {
+                    $q->where(function ($query) {
+                        $query->where('duplicate_in_file', true)
+                            ->orWhere('duplicate_in_db', true);
+                    })->orderBy('row_number');
+                }])
+                ->first();
+        }
+
+        return view('dashboard.import', compact('batch'));
+    }
+
+    public function import_excel(Request $request, AidDistributionImportService $importService)
+    {
+        $this->authorize('import', AidDistribution::class);
+        
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls|max:10240',
+        ], [
+            'file.required' => 'الرجاء اختيار ملف للاستيراد',
+            'file.mimes' => 'يجب أن يكون الملف بصيغة Excel (xlsx أو xls)',
+            'file.max' => 'حجم الملف يجب أن لا يتجاوز 10 ميجابايت',
+        ]);
+
+        $file = $request->file('file');
+        $filename = $file->getClientOriginalName();
+
+        try {
+            $batch = $importService->parseAndValidateFile($file, $filename);
+
+            if ($batch->status === 'failed') {
+                return redirect()
+                    ->route('dashboard.import')
+                    ->with('danger', 'فشل استيراد الملف - يرجى مراجعة الأخطاء أدناه')
+                    ->with('import_errors', $batch->errors);
+            }
+
+            if ($batch->duplicate_rows > 0) {
+                return redirect()->route('dashboard.import', ['batch' => $batch->uuid])
+                    ->with('info', 'تم العثور على سجلات مكررة تحتاج موافقتك');
+            }
+
+            $result = $importService->finalizeImport($batch, app(ProjectConsumptionService::class));
+
+            if (!$result['success']) {
+                return redirect()
+                    ->route('dashboard.import')
+                    ->with('danger', 'فشل الاستيراد: ' . ($result['error'] ?? 'خطأ غير معروف'))
+                    ->with('constraint_errors', $result['details'] ?? null);
+            }
+
+            return redirect()->route('dashboard.import')->with('success', "تم استيراد {$result['imported']} سجل بنجاح");
+        } catch (\Throwable $e) {
             return redirect()
                 ->route('dashboard.import')
-                ->with('warning', 'تم الاستيراد مع تجاهل بعض السجلات التي ينقصها المكتب أو المؤسسة.')
-                ->with('import_problem_rows', $problemRows);
+                ->with('danger', 'حدث خطأ أثناء معالجة الملف: ' . $e->getMessage())
+                ->withInput();
+        }
+    }
+
+    public function import_finalize(string $uuid, AidDistributionImportService $importService, ProjectConsumptionService $consumptionService)
+    {
+        $this->authorize('import', AidDistribution::class);
+
+        $batch = AidDistributionImportBatch::query()->where('uuid', $uuid)->firstOrFail();
+
+        if ($batch->status !== 'pending_review') {
+            return redirect()->route('dashboard.import')
+                ->with('warning', 'هذه الدفعة تم معالجتها مسبقاً أو تم إلغاؤها');
         }
 
-        return redirect()->route('dashboard.import')->with('success', 'تمت عملية الاستيراد بنجاح');
+        try {
+            $result = $importService->finalizeImport($batch, $consumptionService);
+
+            if (!$result['success']) {
+                return redirect()
+                    ->route('dashboard.import', ['batch' => $uuid])
+                    ->with('danger', 'فشل الاستيراد النهائي: ' . ($result['error'] ?? 'خطأ غير معروف'))
+                    ->with('constraint_errors', $result['details'] ?? null);
+            }
+
+            return redirect()->route('dashboard.import')
+                ->with('success', "تم استيراد {$result['imported']} سجل بنجاح ✓");
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('dashboard.import', ['batch' => $uuid])
+                ->with('danger', 'حدث خطأ أثناء الاستيراد النهائي: ' . $e->getMessage());
+        }
+    }
+
+    public function import_update_decision(Request $request, string $uuid)
+    {
+        $this->authorize('import', AidDistribution::class);
+
+        $validated = $request->validate([
+            'row_id' => 'required|exists:aid_distribution_import_rows,id',
+            'decision' => 'required|in:approved,rejected',
+        ]);
+
+        $batch = AidDistributionImportBatch::query()->where('uuid', $uuid)->firstOrFail();
+        $row = $batch->rows()->findOrFail($validated['row_id']);
+
+        $row->update([
+            'decision' => $validated['decision'],
+        ]);
+
+        return response()->json(['success' => true]);
     }
 
 }

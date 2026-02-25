@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\ActivityLogService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -49,6 +50,8 @@ class FortifyServiceProvider extends ServiceProvider
         $this->app->instance(LogoutResponse::class, new class implements LogoutResponse {
             public function toResponse($request)
             {
+                Cache::flush();
+
                 // if(Config::get('fortify.guard') == 'employee'){
                 //     return redirect('/em/login');
                 // }

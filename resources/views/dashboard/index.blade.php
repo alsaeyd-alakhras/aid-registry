@@ -36,6 +36,18 @@
         </style>
     @endpush
 
+    <x-slot:extra_nav>
+        <div class="mx-2 nav-item">
+            <form method="POST" action="{{ route('dashboard.home.refresh-cache') }}" class="d-inline">
+                @csrf
+                <button class="p-2 border-0 btn btn-outline-primary rounded-pill me-n1 waves-effect waves-light"
+                    type="submit" title="تحديث الإحصائيات من المصدر مباشرة">
+                    <i class="fa-solid fa-rotate-right fe-16"></i>
+                </button>
+            </form>
+        </div>
+    </x-slot:extra_nav>
+
     <x-slot:breadcrumb>
         <li><a href="#">الرئيسية</a></li>
     </x-slot:breadcrumb>
@@ -231,6 +243,92 @@
 
     <div class="mt-4 card section-card">
         <div class="py-3 card-header">
+            <h6 class="mb-0">حالة المشاريع</h6>
+        </div>
+        <div class="p-0 card-body">
+            <div class="table-responsive">
+                <table class="table mb-0 table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>رقم المشروع</th>
+                            <th>اسم المشروع</th>
+                            <th>المؤسسة</th>
+                            <th>النوع</th>
+                            <th>عدد المساعدات</th>
+                            <th>الإجمالي</th>
+                            <th>المصروف</th>
+                            <th>المتبقي</th>
+                            <th>المستفيدين</th>
+                            <th>تفاصيل</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($projectStats as $project)
+                            <tr>
+                                <td>{{ $project['project_number'] }}</td>
+                                <td>{{ $project['name'] }}</td>
+                                <td>{{ $project['institution_name'] }}</td>
+                                <td>
+                                    @if($project['project_type'] === 'cash')
+                                        <span class="badge bg-success">نقدي</span>
+                                    @else
+                                        <span class="badge bg-info">عيني</span>
+                                        <div class="small text-muted">{{ $project['aid_item_name'] }}</div>
+                                    @endif
+                                </td>
+                                <td>{{ $formatCount($project['aid_distributions_count']) }}</td>
+                                <td>
+                                    @if($project['project_type'] === 'cash')
+                                        {{ $formatMoney($project['total_amount']) }} ₪
+                                    @else
+                                        {{ number_format($project['total_quantity'], 2) }}
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($project['project_type'] === 'cash')
+                                        <span class="text-danger">{{ $formatMoney($project['consumed_amount']) }} ₪</span>
+                                    @else
+                                        <span class="text-danger">{{ number_format($project['consumed_quantity'], 2) }}</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($project['project_type'] === 'cash')
+                                        <span class="text-success">{{ $formatMoney($project['remaining_amount']) }} ₪</span>
+                                    @else
+                                        <span class="text-success">{{ number_format($project['remaining_quantity'], 2) }}</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">{{ $project['beneficiaries_total'] }}</span>
+                                    /
+                                    <span class="badge bg-warning">{{ $project['beneficiaries_consumed'] }}</span>
+                                    /
+                                    <span class="badge bg-success">{{ $project['remaining_beneficiaries'] }}</span>
+                                </td>
+                                <td>
+                                    <button type="button" 
+                                        class="btn btn-sm btn-outline-primary view-project-breakdown-btn" 
+                                        data-project-id="{{ $project['id'] }}">
+                                        <i class="fa-solid fa-eye"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="10" class="py-4 text-center text-muted">لا توجد مشاريع لعرضها</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="pt-3 bg-white card-footer">
+            {{ $projectStats->appends(request()->except('project_page'))->links() }}
+        </div>
+    </div>
+
+    <div class="mt-4 card section-card">
+        <div class="py-3 card-header">
             <h6 class="mb-0">آخر عمليات الصرف</h6>
         </div>
         <div class="p-0 card-body">
@@ -298,6 +396,52 @@
         </div>
         <div class="pt-3 bg-white card-footer">
             {{ $recentDistributions->appends(request()->except('recent_page'))->links() }}
+        </div>
+    </div>
+
+    <div class="modal fade" id="projectBreakdownModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">تفاصيل المشروع</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>رقم المشروع:</strong> <span id="breakdown-project-number"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>اسم المشروع:</strong> <span id="breakdown-project-name"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>المؤسسة:</strong> <span id="breakdown-institution"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>النوع:</strong> <span id="breakdown-type"></span>
+                        </div>
+                    </div>
+                    <hr>
+                    <h6>توزيع الصرف حسب المكتب والموظف:</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>المكتب</th>
+                                    <th>الموظف</th>
+                                    <th>عدد المستفيدين</th>
+                                    <th>المبلغ/الكمية</th>
+                                </tr>
+                            </thead>
+                            <tbody id="breakdown-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إغلاق</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -370,6 +514,52 @@
                     }
                 });
             }
+
+            $('.view-project-breakdown-btn').on('click', function() {
+                const projectId = $(this).data('project-id');
+                
+                $.ajax({
+                    url: `/api/projects/${projectId}/breakdown`,
+                    method: 'GET',
+                    success: function(response) {
+                        $('#breakdown-project-number').text(response.project.project_number);
+                        $('#breakdown-project-name').text(response.project.name);
+                        $('#breakdown-institution').text(response.project.institution_name);
+                        
+                        const typeText = response.project.project_type === 'cash' 
+                            ? 'نقدي' 
+                            : `عيني (${response.project.aid_item_name})`;
+                        $('#breakdown-type').text(typeText);
+
+                        const $tbody = $('#breakdown-table-body');
+                        $tbody.empty();
+
+                        if (response.breakdown.length === 0) {
+                            $tbody.append('<tr><td colspan="4" class="text-center text-muted">لا توجد عمليات صرف لهذا المشروع</td></tr>');
+                        } else {
+                            response.breakdown.forEach(function(item) {
+                                const valueDisplay = response.project.project_type === 'cash'
+                                    ? parseFloat(item.total_cash).toFixed(2) + ' ₪'
+                                    : parseFloat(item.total_quantity).toFixed(2);
+
+                                $tbody.append(`
+                                    <tr>
+                                        <td>${item.office_name}</td>
+                                        <td>${item.creator_name}</td>
+                                        <td>${item.beneficiaries}</td>
+                                        <td>${valueDisplay}</td>
+                                    </tr>
+                                `);
+                            });
+                        }
+
+                        new bootstrap.Modal(document.getElementById('projectBreakdownModal')).show();
+                    },
+                    error: function() {
+                        toastr.error('فشل تحميل تفاصيل المشروع');
+                    }
+                });
+            });
         </script>
     @endpush
 </x-front-layout>

@@ -37,6 +37,22 @@
             "showMethod": "fadeIn",
             "hideMethod": "fadeOut"
         }
+
+        @if(session('success'))
+            toastr.success("{{ session('success') }}");
+        @endif
+
+        @if(session('danger'))
+            toastr.error("{{ session('danger') }}");
+        @endif
+
+        @if(session('warning'))
+            toastr.warning("{{ session('warning') }}");
+        @endif
+
+        @if(session('info'))
+            toastr.info("{{ session('info') }}");
+        @endif
     </script>
 
     {{-- Custom JS --}}

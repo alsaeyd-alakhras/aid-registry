@@ -62,6 +62,14 @@
                         </a>
                     </li>
                     @endcan
+                    @can('view','App\\Models\Project')
+                    <li class="menu-item {{ request()->is('projects/*') || request()->is('projects') ? 'active' : '' }}">
+                        <a href="{{ route('dashboard.projects.index') }}" class="menu-link">
+                            <i class="fa-solid fa-diagram-project me-2"></i>
+                            <div data-i18n="projects">المشاريع</div>
+                        </a>
+                    </li>
+                    @endcan
                     @can('view','App\\Models\AidItem')
                     <li class="menu-item {{ request()->is('aid-items/*') || request()->is('aid-items') ? 'active' : '' }}">
                         <a href="{{ route('dashboard.aid-items.index') }}" class="menu-link">

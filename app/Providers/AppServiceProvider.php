@@ -8,6 +8,7 @@ use App\Models\Currency;
 use App\Models\Executive;
 use App\Models\Institution;
 use App\Models\Office;
+use App\Models\Project;
 use App\Models\User;
 use App\Observers\AidDistributionObserver;
 use App\Observers\ConstantObserver;
@@ -15,9 +16,11 @@ use App\Observers\CurrencyObserver;
 use App\Observers\ExecutiveObserver;
 use App\Observers\InstitutionObserver;
 use App\Observers\OfficeObserver;
+use App\Observers\ProjectObserver;
 use App\Observers\UserObserver;
 use App\Policies\AidDistributionPolicy;
 use App\Policies\InstitutionPolicy;
+use App\Policies\ProjectPolicy;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -83,6 +86,7 @@ class AppServiceProvider extends ServiceProvider
         });
         Gate::policy(AidDistribution::class, AidDistributionPolicy::class);
         Gate::policy(Institution::class, InstitutionPolicy::class);
+        Gate::policy(Project::class, ProjectPolicy::class);
 
 
 
@@ -94,5 +98,6 @@ class AppServiceProvider extends ServiceProvider
         Office::observe(OfficeObserver::class);
         Institution::observe(InstitutionObserver::class);
         AidDistribution::observe(AidDistributionObserver::class);
+        Project::observe(ProjectObserver::class);
     }
 }

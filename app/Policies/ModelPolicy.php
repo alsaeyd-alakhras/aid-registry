@@ -10,6 +10,13 @@ class ModelPolicy
         'aiddistributions.view',
         'aiddistributions.create',
         'aiddistributions.update',
+        'aiddistributions.import',
+        'projects.view',
+        'projects.create',
+        'projects.update',
+        'aiditems.view',
+        'aiditems.create',
+        'aiditems.update',
     ];
 
     /**

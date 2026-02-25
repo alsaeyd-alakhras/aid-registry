@@ -189,6 +189,30 @@
                     @enderror
                 </div>
                 <div class="mb-4">
+                    <label class="form-label" for="project_id">المشروع</label>
+                    <select
+                        id="project_id"
+                        name="project_id"
+                        class="form-select @error('project_id') is-invalid @enderror"
+                    >
+                        <option value="">اختر المؤسسة أولاً</option>
+                        @if($isEdit && $distribution->project_id)
+                            <option value="{{ $distribution->project_id }}" selected>
+                                {{ $distribution->project?->project_number }} - {{ $distribution->project?->name }}
+                            </option>
+                        @endif
+                    </select>
+                    @error('project_id')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    <div id="project-full-message" class="alert alert-danger mt-2" style="display: none;">
+                        <i class="fa-solid fa-exclamation-triangle me-1"></i>
+                        <strong>المشروع ممتلئ!</strong> لا يوجد مستفيدين متبقيين.
+                    </div>
+                    <div id="project-stats-display" class="mt-2 small text-muted" style="display: none;">
+                    </div>
+                </div>
+                <div class="mb-4">
                     <x-form.select
                         name="aid_mode"
                         id="aid_mode"
@@ -211,6 +235,7 @@
                         label="قيمة المساعدة"
                         :value="$distribution->cash_amount"
                     />
+                    <div id="cash-remaining-message" class="mt-2 small" style="display: none;"></div>
                 </div>
                 <div class="mb-4" id="aid-item-wrapper">
                     <x-form.select
@@ -231,6 +256,7 @@
                         label="كمية الصرف"
                         :value="$distribution->quantity"
                     />
+                    <div id="quantity-remaining-message" class="mt-2 small" style="display: none;"></div>
                 </div>
                 <div class="mb-4">
                     <x-form.input
@@ -451,6 +477,7 @@
         $(document).ready(function () {
             let currentFamilyData = null;
             let visiblePolygamousRows = 2;
+            let currentProjectStats = null;
 
             function countFilledSpouses() {
                 let filledCount = 0;
@@ -604,6 +631,148 @@
 
             $('#marital_status').on('change', toggleSpouseFields);
             $('#aid_mode').on('change', toggleAidModeFields);
+
+            function loadProjectsByInstitution(institutionId, selectedProjectId = null) {
+                if (!institutionId) {
+                    $('#project_id').html('<option value="">اختر المؤسسة أولاً</option>').prop('disabled', false);
+                    return;
+                }
+
+                $('#project_id').html('<option value="">جاري التحميل...</option>').prop('disabled', true);
+
+                $.ajax({
+                    url: `/api/institutions/${institutionId}/projects`,
+                    method: 'GET',
+                    success: function(projects) {
+                        let options = '<option value="">اختر المشروع</option>';
+                        projects.forEach(function(project) {
+                            const displayText = `${project.project_number} - ${project.name} (متبقي: ${project.remaining_beneficiaries})`;
+                            const selected = selectedProjectId && project.id == selectedProjectId ? 'selected' : '';
+                            options += `<option value="${project.id}" ${selected}>${displayText}</option>`;
+                        });
+                        $('#project_id').html(options).prop('disabled', false);
+
+                        if (selectedProjectId) {
+                            $('#project_id').trigger('change');
+                        }
+                    },
+                    error: function() {
+                        toastr.error('فشل تحميل المشاريع');
+                        $('#project_id').html('<option value="">خطأ في التحميل</option>').prop('disabled', false);
+                    }
+                });
+            }
+
+            $('#institution_id').on('change', function() {
+                const institutionId = $(this).val();
+                currentProjectStats = null;
+                updateRemainingMessages();
+                loadProjectsByInstitution(institutionId);
+            });
+
+            $('#project_id').on('change', function() {
+                const projectId = $(this).val();
+                currentProjectStats = null;
+                $('#project-full-message').hide();
+                $('#project-stats-display').hide();
+                updateRemainingMessages();
+
+                if (!projectId) {
+                    return;
+                }
+
+                $.ajax({
+                    url: `/api/projects/${projectId}/stats`,
+                    method: 'GET',
+                    success: function(stats) {
+                        currentProjectStats = stats;
+
+                        if (stats.remaining_beneficiaries <= 0) {
+                            $('#project-full-message').show();
+                            $('button[type="submit"]').prop('disabled', true);
+                        } else {
+                            $('#project-full-message').hide();
+                            $('button[type="submit"]').prop('disabled', false);
+
+                            let displayText = `<i class="fa-solid fa-info-circle me-1"></i>`;
+                            if (stats.project_type === 'cash') {
+                                displayText += `متبقي في المشروع: ${parseFloat(stats.remaining_amount).toFixed(2)} ₪ | مستفيدين: ${stats.remaining_beneficiaries}`;
+                            } else {
+                                displayText += `متبقي في المشروع: ${parseFloat(stats.remaining_quantity).toFixed(2)} | مستفيدين: ${stats.remaining_beneficiaries}`;
+                            }
+                            $('#project-stats-display').html(displayText).show();
+                        }
+
+                        updateRemainingMessages();
+                    },
+                    error: function() {
+                        toastr.error('فشل تحميل بيانات المشروع');
+                    }
+                });
+            });
+
+            $('#cash_amount').on('input', updateRemainingMessages);
+            $('#quantity').on('input', updateRemainingMessages);
+
+            function updateRemainingMessages() {
+                if (!currentProjectStats) {
+                    $('#cash-remaining-message').hide();
+                    $('#quantity-remaining-message').hide();
+                    $('button[type="submit"]').prop('disabled', false);
+                    return;
+                }
+
+                let isValid = true;
+                const isEdit = {{ $isEdit ? 'true' : 'false' }};
+
+                if (currentProjectStats.project_type === 'cash') {
+                    const inputAmount = parseFloat($('#cash_amount').val()) || 0;
+                    let availableAmount = currentProjectStats.remaining_amount;
+                    
+                    if (isEdit) {
+                        const oldAmount = parseFloat('{{ $distribution->cash_amount ?? 0 }}') || 0;
+                        availableAmount += oldAmount;
+                    }
+                    
+                    const remaining = availableAmount - inputAmount;
+                    const color = remaining < 0 ? 'text-danger' : 'text-success';
+                    
+                    if (remaining < 0) {
+                        isValid = false;
+                    }
+
+                    $('#cash-remaining-message')
+                        .html(`<i class="fa-solid fa-calculator me-1"></i>المتبقي بعد هذه العملية: <span class="${color}">${remaining.toFixed(2)} ₪</span>`)
+                        .show();
+                    $('#quantity-remaining-message').hide();
+                } else if (currentProjectStats.project_type === 'in_kind') {
+                    const inputQuantity = parseFloat($('#quantity').val()) || 0;
+                    let availableQuantity = currentProjectStats.remaining_quantity;
+                    
+                    if (isEdit) {
+                        const oldQuantity = parseFloat('{{ $distribution->quantity ?? 0 }}') || 0;
+                        availableQuantity += oldQuantity;
+                    }
+                    
+                    const remaining = availableQuantity - inputQuantity;
+                    const color = remaining < 0 ? 'text-danger' : 'text-success';
+                    
+                    if (remaining < 0) {
+                        isValid = false;
+                    }
+
+                    $('#quantity-remaining-message')
+                        .html(`<i class="fa-solid fa-calculator me-1"></i>المتبقي بعد هذه العملية: <span class="${color}">${remaining.toFixed(2)}</span>`)
+                        .show();
+                    $('#cash-remaining-message').hide();
+                }
+
+                if (currentProjectStats.remaining_beneficiaries <= 0) {
+                    isValid = false;
+                }
+
+                $('button[type="submit"]').prop('disabled', !isValid);
+            }
             $('#add-spouse-btn').on('click', function () {
                 if ($('#marital_status').val() !== 'polygamous') return;
                 if (visiblePolygamousRows < 4) {
@@ -633,6 +802,14 @@
 
             toggleSpouseFields();
             toggleAidModeFields();
+
+            @if($isEdit)
+                const initialInstitutionId = $('#institution_id').val();
+                const initialProjectId = {{ $distribution->project_id ?? 'null' }};
+                if (initialInstitutionId) {
+                    loadProjectsByInstitution(initialInstitutionId, initialProjectId);
+                }
+            @endif
 
             // حماية UX: إذا تغيّر national_id يدوياً، امسح family_id و resolution_mode وأخفِ Sidebar
             $('#national_id').on('input', function() {
