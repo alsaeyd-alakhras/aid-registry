@@ -21,13 +21,19 @@
             </div>
             <div class="card-body">
                 <div class="row">
-                    @if($isEdit)
                         <div class="mb-4 col-md-6">
-                            <label class="form-label">رقم المشروع</label>
-                            <input type="text" class="form-control" value="{{ $project->project_number }}" disabled>
+                            <x-form.input
+                                id="project_number"
+                                type="number"
+                                min="1"
+                                name="project_number"
+                                label="رقم المشروع"
+                                :value="$project->project_number"
+                                required
+                            />
+                            <small class="text-muted">يجب أن يكون رقم المشروع فريداً</small>
                         </div>
-                    @endif
-                    <div class="mb-4 col-md-{{ $isEdit ? '6' : '12' }}">
+                    <div class="mb-4 col-md-6">
                         <x-form.input
                             name="name"
                             label="اسم المشروع"
@@ -191,7 +197,7 @@
                     <div class="alert alert-info mb-0">
                         <small>
                             <i class="fa-solid fa-info-circle me-1"></i>
-                            رقم المشروع والتبعية سيتم تعيينهما تلقائياً عند الحفظ
+                            التبعية سيتم تعيينها تلقائياً عند الحفظ
                         </small>
                     </div>
                 @endif

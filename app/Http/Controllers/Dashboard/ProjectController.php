@@ -102,7 +102,11 @@ class ProjectController extends Controller
                 $dependencyType = $user?->user_type === 'employee' ? 'office' : 'admin';
                 $dependencyOfficeId = $dependencyType === 'office' ? $user?->office_id : null;
 
-                $projectNumber = $numberService->generateNumber($dependencyType, $dependencyOfficeId);
+                // تسلسل تلقائي (معطل حالياً - استخدام رقم يدوي)
+                // $projectNumber = $numberService->generateNumber($dependencyType, $dependencyOfficeId);
+                
+                // استخدام الرقم اليدوي من المستخدم
+                $projectNumber = $validated['project_number'];
 
                 Project::create([
                     'project_number' => $projectNumber,
@@ -165,6 +169,7 @@ class ProjectController extends Controller
             DB::beginTransaction();
             try {
                 $project->update([
+                    'project_number' => $validated['project_number'],
                     'name' => $validated['name'],
                     'institution_id' => $validated['institution_id'],
                     'project_type' => $validated['project_type'],
@@ -242,7 +247,15 @@ class ProjectController extends Controller
 
     private function validateForm(Request $request): array
     {
+        $projectId = $request->route('project') ? $request->route('project')->id : null;
+        
         $validated = $request->validate([
+            'project_number' => [
+                'required',
+                'string',
+                'max:50',
+                \Illuminate\Validation\Rule::unique('projects', 'project_number')->ignore($projectId),
+            ],
             'name' => 'required|string|max:255',
             'institution_id' => 'required|exists:institutions,id',
             'project_type' => 'required|in:cash,in_kind',
@@ -252,6 +265,9 @@ class ProjectController extends Controller
             'estimated_amount' => 'nullable|numeric|min:0',
             'beneficiaries_total' => 'required|integer|min:1',
             'notes' => 'nullable|string',
+        ], [
+            'project_number.required' => 'رقم المشروع مطلوب',
+            'project_number.unique' => 'رقم المشروع موجود مسبقاً، يرجى اختيار رقم آخر',
         ]);
 
         if ($validated['project_type'] === 'in_kind' && empty($validated['aid_item_id'])) {
