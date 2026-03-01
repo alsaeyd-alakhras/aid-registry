@@ -14,6 +14,10 @@
     </div>
 @endif
 
+@push('styles')
+    <link rel="stylesheet" href="{{ asset('css/custom/select2.min.css') }}">
+@endpush
+
 <input type="hidden" name="family_id" id="family_id" value="">
 <input type="hidden" name="resolution_mode" id="resolution_mode" value="">
 
@@ -171,7 +175,7 @@
                     <select
                         id="institution_id"
                         name="institution_id"
-                        class="form-select @error('institution_id') is-invalid @enderror"
+                        class="form-select select2 @error('institution_id') is-invalid @enderror"
                         required
                     >
                         <option value="" @selected(old('institution_id', $distribution->institution_id) == null)>إختر القيمة</option>
@@ -193,7 +197,7 @@
                     <select
                         id="project_id"
                         name="project_id"
-                        class="form-select @error('project_id') is-invalid @enderror"
+                        class="form-select select2 @error('project_id') is-invalid @enderror"
                     >
                         <option value="">اختر المؤسسة أولاً</option>
                         @if($isEdit && $distribution->project_id)
@@ -473,7 +477,11 @@
 </div>
 
 @push('scripts')
+    <script src="{{ asset('js/plugins/select2.min.js') }}"></script>
     <script>
+        $(document).ready(function() {
+            $('.select2').select2();
+        });
         $(document).ready(function () {
             let currentFamilyData = null;
             let visiblePolygamousRows = 2;
@@ -638,17 +646,23 @@
                     return;
                 }
 
+                const officeId = $('#office_id').val() || '';
                 $('#project_id').html('<option value="">جاري التحميل...</option>').prop('disabled', true);
 
+                const url = officeId
+                    ? `/api/institutions/${institutionId}/projects?office_id=${officeId}`
+                    : `/api/institutions/${institutionId}/projects`;
+
                 $.ajax({
-                    url: `/api/institutions/${institutionId}/projects`,
+                    url: url,
                     method: 'GET',
                     success: function(projects) {
                         let options = '<option value="">اختر المشروع</option>';
                         projects.forEach(function(project) {
-                            const displayText = `${project.project_number} - ${project.name} (متبقي: ${project.remaining_beneficiaries})`;
+                            const suffix = project.by_office ? ' (متبقي للمكتب: ' + project.remaining_beneficiaries + ')' : ' (متبقي: ' + project.remaining_beneficiaries + ')';
+                            const displayText = `${project.project_number} - ${project.name}${suffix}`;
                             const selected = selectedProjectId && project.id == selectedProjectId ? 'selected' : '';
-                            options += `<option value="${project.id}" ${selected}>${displayText}</option>`;
+                            options += `<option value="${project.id}" ${selected} data-by-office="${project.by_office ? '1' : '0'}">${displayText}</option>`;
                         });
                         $('#project_id').html(options).prop('disabled', false);
 
@@ -662,6 +676,15 @@
                     }
                 });
             }
+
+            $('#office_id').on('change', function() {
+                const institutionId = $('#institution_id').val();
+                currentProjectStats = null;
+                updateRemainingMessages();
+                if (institutionId) {
+                    loadProjectsByInstitution(institutionId);
+                }
+            });
 
             $('#institution_id').on('change', function() {
                 const institutionId = $(this).val();
@@ -681,8 +704,13 @@
                     return;
                 }
 
+                const officeId = $('#office_id').val() || '';
+                const statsUrl = officeId
+                    ? `/api/projects/${projectId}/stats?office_id=${officeId}`
+                    : `/api/projects/${projectId}/stats`;
+
                 $.ajax({
-                    url: `/api/projects/${projectId}/stats`,
+                    url: statsUrl,
                     method: 'GET',
                     success: function(stats) {
                         currentProjectStats = stats;
@@ -694,11 +722,12 @@
                             $('#project-full-message').hide();
                             $('button[type="submit"]').prop('disabled', false);
 
+                            const label = stats.by_office ? 'متبقي للمكتب' : 'متبقي في المشروع';
                             let displayText = `<i class="fa-solid fa-info-circle me-1"></i>`;
                             if (stats.project_type === 'cash') {
-                                displayText += `متبقي في المشروع: ${parseFloat(stats.remaining_amount).toFixed(2)} ₪ | مستفيدين: ${stats.remaining_beneficiaries}`;
+                                displayText += `${label}: ${parseFloat(stats.remaining_amount).toFixed(2)} ₪ | مستفيدين: ${stats.remaining_beneficiaries}`;
                             } else {
-                                displayText += `متبقي في المشروع: ${parseFloat(stats.remaining_quantity).toFixed(2)} | مستفيدين: ${stats.remaining_beneficiaries}`;
+                                displayText += `${label}: ${parseFloat(stats.remaining_quantity).toFixed(2)} | مستفيدين: ${stats.remaining_beneficiaries}`;
                             }
                             $('#project-stats-display').html(displayText).show();
                         }

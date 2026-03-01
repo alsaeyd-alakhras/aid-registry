@@ -130,6 +130,12 @@ class ProjectConsumptionService
 
     private function validateProjectConstraints(Project $project, array $validated, ?AidDistribution $existingDistribution): void
     {
+        if (($project->status ?? 'active') !== 'active') {
+            throw ValidationException::withMessages([
+                'project_id' => "المشروع {$project->name} مغلق ولا يقبل صرفاً جديداً.",
+            ]);
+        }
+
         if ($project->remaining_beneficiaries <= 0) {
             throw ValidationException::withMessages([
                 'project_id' => "المشروع {$project->name} ممتلئ (لا مستفيدين متبقيين).",
@@ -171,10 +177,18 @@ class ProjectConsumptionService
                 ]);
             }
         }
+
+        $this->validateOfficeAllocation($project, $validated, $existingDistribution);
     }
 
     private function validateProjectConstraintsForUpdate(Project $project, AidDistribution $distribution, array $validated): void
     {
+        if (($project->status ?? 'active') !== 'active') {
+            throw ValidationException::withMessages([
+                'project_id' => "المشروع {$project->name} مغلق ولا يقبل صرفاً جديداً.",
+            ]);
+        }
+
         $oldCashAmount = (float) ($distribution->cash_amount ?? 0);
         $newCashAmount = (float) ($validated['cash_amount'] ?? 0);
         $oldQuantity = (float) ($distribution->quantity ?? 0);
@@ -197,6 +211,8 @@ class ProjectConsumptionService
                 ]);
             }
         }
+
+        $this->validateOfficeAllocation($project, $validated, $distribution);
     }
 
     private function incrementProjectConsumption(Project $project, array $validated): void
@@ -348,5 +364,98 @@ class ProjectConsumptionService
             ->take(4)
             ->values()
             ->toArray();
+    }
+
+    private function validateOfficeAllocation(Project $project, array $validated, ?AidDistribution $existingDistribution): void
+    {
+        if (!$project->officeAllocations()->exists()) {
+            return;
+        }
+
+        $officeId = $validated['office_id'];
+        $allocation = $project->officeAllocations()->where('office_id', $officeId)->first();
+
+        if (!$allocation) {
+            throw ValidationException::withMessages([
+                'office_id' => "المكتب غير مسموح له بالصرف من هذا المشروع. يرجى مراجعة توزيعات المشروع.",
+            ]);
+        }
+
+        $hasBeneficiariesLimit = $allocation->max_beneficiaries > 0;
+        $hasAmountLimit = $allocation->max_amount !== null && $allocation->max_amount > 0;
+        $hasQuantityLimit = $allocation->max_quantity !== null && $allocation->max_quantity > 0;
+
+        if (!$hasBeneficiariesLimit && !$hasAmountLimit && !$hasQuantityLimit) {
+            throw ValidationException::withMessages([
+                'office_id' => "المكتب ليس له حصة محددة من هذا المشروع. يجب تحديد على الأقل عدد المستفيدين أو المبلغ/الكمية في إعدادات المشروع.",
+            ]);
+        }
+
+        $currentConsumption = AidDistribution::query()
+            ->where('project_id', $project->id)
+            ->where('office_id', $officeId)
+            ->where('status', 'active')
+            ->when($existingDistribution, function ($q) use ($existingDistribution) {
+                $q->where('id', '!=', $existingDistribution->id);
+            })
+            ->selectRaw('COUNT(*) as beneficiaries_count')
+            ->selectRaw('SUM(CASE WHEN aid_mode = "cash" THEN cash_amount ELSE 0 END) as total_cash')
+            ->selectRaw('SUM(CASE WHEN aid_mode = "in_kind" THEN quantity ELSE 0 END) as total_quantity')
+            ->first();
+
+        $consumedBeneficiaries = (int) ($currentConsumption->beneficiaries_count ?? 0);
+        $consumedCash = (float) ($currentConsumption->total_cash ?? 0);
+        $consumedQuantity = (float) ($currentConsumption->total_quantity ?? 0);
+
+        $requestedBeneficiaries = 1;
+        $effectiveBeneficiariesLimit = $hasBeneficiariesLimit 
+            ? $allocation->max_beneficiaries 
+            : $project->remaining_beneficiaries;
+
+        $totalBeneficiaries = $consumedBeneficiaries + $requestedBeneficiaries;
+        $availableBeneficiaries = $effectiveBeneficiariesLimit - $consumedBeneficiaries;
+
+        if ($totalBeneficiaries > $effectiveBeneficiariesLimit) {
+            $limitType = $hasBeneficiariesLimit ? 'حصة المكتب' : 'المتبقي في المشروع';
+            throw ValidationException::withMessages([
+                'project_id' => "تجاوزت {$limitType} من المستفيدين ({$effectiveBeneficiariesLimit}). المصروف: {$consumedBeneficiaries}، المتبقي: {$availableBeneficiaries}.",
+            ]);
+        }
+
+        if ($project->project_type === 'cash') {
+            if ($hasAmountLimit) {
+                $requestedCash = (float) $validated['cash_amount'];
+                $totalCash = $consumedCash + $requestedCash;
+                $availableCash = $allocation->max_amount - $consumedCash;
+
+                if ($totalCash > $allocation->max_amount) {
+                    throw ValidationException::withMessages([
+                        'cash_amount' => "تجاوزت حصة المكتب من المبلغ ({$allocation->max_amount} ₪). المصروف: " . number_format($consumedCash, 2) . " ₪، المتبقي: " . number_format($availableCash, 2) . " ₪.",
+                    ]);
+                }
+            } elseif (!$hasBeneficiariesLimit) {
+                throw ValidationException::withMessages([
+                    'project_id' => "يجب تحديد حد للمبلغ أو عدد المستفيدين لهذا المكتب في المشروع النقدي.",
+                ]);
+            }
+        }
+
+        if ($project->project_type === 'in_kind') {
+            if ($hasQuantityLimit) {
+                $requestedQuantity = (float) $validated['quantity'];
+                $totalQuantity = $consumedQuantity + $requestedQuantity;
+                $availableQuantity = $allocation->max_quantity - $consumedQuantity;
+
+                if ($totalQuantity > $allocation->max_quantity) {
+                    throw ValidationException::withMessages([
+                        'quantity' => "تجاوزت حصة المكتب من الكمية ({$allocation->max_quantity}). المصروف: " . number_format($consumedQuantity, 2) . "، المتبقي: " . number_format($availableQuantity, 2) . ".",
+                    ]);
+                }
+            } elseif (!$hasBeneficiariesLimit) {
+                throw ValidationException::withMessages([
+                    'project_id' => "يجب تحديد حد للكمية أو عدد المستفيدين لهذا المكتب في المشروع العيني.",
+                ]);
+            }
+        }
     }
 }

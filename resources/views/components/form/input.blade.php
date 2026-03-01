@@ -29,6 +29,7 @@
     name="{{$name}}"
     value="{{old($name, $value)}}"
     autocomplete="off"
+    {{$required ? 'required' : ''}}
     {{$attributes->class([
         'form-control',
         'is-invalid' => $hasError

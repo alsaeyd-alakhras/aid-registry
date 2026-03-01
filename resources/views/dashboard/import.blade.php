@@ -107,6 +107,7 @@
                                         <tr>
                                             <th>رقم المشروع</th>
                                             <th>اسم المشروع</th>
+                                            <th>المكتب</th>
                                             <th>النوع</th>
                                             <th>المطلوب</th>
                                             <th>المتاح</th>
@@ -114,20 +115,50 @@
                                     </thead>
                                     <tbody>
                                         @foreach(session('import_errors')['project_constraints'] as $constraint)
+                                            @php
+                                                $isOfficeMessageOnly = in_array($constraint['type'] ?? '', ['office_not_allowed', 'office_no_allocation', 'office_missing_limit']);
+                                            @endphp
                                             <tr>
-                                                <td>{{ $constraint['project_number'] }}</td>
-                                                <td>{{ $constraint['project_name'] }}</td>
+                                                <td>{{ $constraint['project_number'] ?? '-' }}</td>
+                                                <td>{{ $constraint['project_name'] ?? '-' }}</td>
+                                                <td>{{ $constraint['office_name'] ?? '-' }}</td>
                                                 <td>
                                                     @if($constraint['type'] === 'beneficiaries')
                                                         مستفيدين
                                                     @elseif($constraint['type'] === 'cash_amount')
                                                         مبلغ نقدي
-                                                    @else
+                                                    @elseif($constraint['type'] === 'quantity')
                                                         كمية
+                                                    @elseif($constraint['type'] === 'office_beneficiaries')
+                                                        مستفيدين (حصة المكتب)
+                                                    @elseif($constraint['type'] === 'office_cash_amount')
+                                                        مبلغ نقدي (حصة المكتب)
+                                                    @elseif($constraint['type'] === 'office_quantity')
+                                                        كمية (حصة المكتب)
+                                                    @elseif($isOfficeMessageOnly)
+                                                        {{ $constraint['type'] === 'office_not_allowed' ? 'غير مسموح' : ($constraint['type'] === 'office_no_allocation' ? 'بدون حصة' : 'حد غير محدد') }}
+                                                    @else
+                                                        {{ $constraint['type'] ?? '-' }}
                                                     @endif
                                                 </td>
-                                                <td class="text-danger"><strong>{{ number_format($constraint['requested'], 2) }}</strong></td>
-                                                <td class="text-success">{{ number_format($constraint['available'], 2) }}</td>
+                                                <td class="text-danger">
+                                                    @if($isOfficeMessageOnly && !empty($constraint['message']))
+                                                        <span class="small text-muted">-</span>
+                                                    @elseif(isset($constraint['requested']))
+                                                        <strong>{{ is_numeric($constraint['requested']) ? number_format($constraint['requested'], 2) : $constraint['requested'] }}</strong>
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </td>
+                                                <td class="text-success">
+                                                    @if($isOfficeMessageOnly && !empty($constraint['message']))
+                                                        <span class="small">{{ $constraint['message'] }}</span>
+                                                    @elseif(isset($constraint['available']))
+                                                        {{ is_numeric($constraint['available']) ? number_format($constraint['available'], 2) : $constraint['available'] }}
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </td>
                                             </tr>
                                         @endforeach
                                     </tbody>
@@ -226,12 +257,30 @@
                     <h6 class="mb-0">تجاوز قيود المشاريع</h6>
                 </div>
                 <div class="card-body">
-                    <ul>
+                    <ul class="mb-0">
                         @foreach(session('constraint_errors') as $constraint)
-                            <li>
-                                المشروع: {{ $constraint['project_number'] }} - {{ $constraint['project_name'] }}<br>
-                                النوع: {{ $constraint['type'] }}<br>
-                                المطلوب: {{ $constraint['requested'] }} | المتاح: {{ $constraint['available'] }}
+                            <li class="mb-2">
+                                <strong>المشروع:</strong> {{ $constraint['project_number'] ?? '-' }} - {{ $constraint['project_name'] ?? '-' }}
+                                @if(!empty($constraint['office_name']))
+                                    <br><strong>المكتب:</strong> {{ $constraint['office_name'] }}
+                                @endif
+                                <br><strong>النوع:</strong>
+                                @if($constraint['type'] === 'beneficiaries')
+                                    مستفيدين
+                                @elseif($constraint['type'] === 'cash_amount')
+                                    مبلغ نقدي
+                                @elseif($constraint['type'] === 'quantity')
+                                    كمية
+                                @elseif(in_array($constraint['type'] ?? '', ['office_beneficiaries', 'office_cash_amount', 'office_quantity']))
+                                    {{ $constraint['type'] === 'office_beneficiaries' ? 'مستفيدين (حصة المكتب)' : ($constraint['type'] === 'office_cash_amount' ? 'مبلغ نقدي (حصة المكتب)' : 'كمية (حصة المكتب)') }}
+                                @else
+                                    {{ $constraint['type'] ?? '-' }}
+                                @endif
+                                @if(!empty($constraint['message']))
+                                    <br><span class="text-muted">{{ $constraint['message'] }}</span>
+                                @elseif(isset($constraint['requested']) || isset($constraint['available']))
+                                    <br>المطلوب: {{ $constraint['requested'] ?? '-' }} | المتاح: {{ $constraint['available'] ?? '-' }}
+                                @endif
                             </li>
                         @endforeach
                     </ul>

@@ -22,6 +22,13 @@ class Project extends Model
         'dependency_type',
         'dependency_office_id',
         'notes',
+        'project_date',
+        'execution_date',
+        'receipt_date',
+        'department',
+        'supervisor_name',
+        'execution_location',
+        'status',
     ];
 
     protected $guarded = [
@@ -38,7 +45,15 @@ class Project extends Model
         'estimated_amount' => 'decimal:2',
         'beneficiaries_total' => 'integer',
         'beneficiaries_consumed' => 'integer',
+        'project_date' => 'date',
+        'execution_date' => 'date',
+        'receipt_date' => 'date',
     ];
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active');
+    }
 
     public function institution(): BelongsTo
     {
@@ -63,6 +78,11 @@ class Project extends Model
     public function aidDistributions(): HasMany
     {
         return $this->hasMany(AidDistribution::class);
+    }
+
+    public function officeAllocations(): HasMany
+    {
+        return $this->hasMany(ProjectOfficeAllocation::class);
     }
 
     public function getRemainingQuantityAttribute(): float

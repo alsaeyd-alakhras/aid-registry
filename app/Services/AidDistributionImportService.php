@@ -24,10 +24,13 @@ class AidDistributionImportService
     private bool $officeCacheLoaded = false;
     private bool $aidItemCacheLoaded = false;
 
+    private $currentUser = null;
+
     public function parseAndValidateFile($file, string $filename): AidDistributionImportBatch
     {
         $this->loadOfficeCache();
         $this->loadAidItemCache();
+        $this->currentUser = Auth::user();
 
         $collection = Excel::toCollection(null, $file, null, \Maatwebsite\Excel\Excel::XLSX)->first();
         
@@ -156,7 +159,7 @@ class AidDistributionImportService
         if ($projectNumber !== null) {
             $project = $this->resolveProject($projectNumber);
             if (!$project) {
-                $errors[] = "المشروع رقم {$projectNumber} غير موجود";
+                $errors[] = "المشروع رقم {$projectNumber} غير موجود أو مغلق";
             } else {
                 $projectId = $project->id;
                 $institutionId = $project->institution_id;
@@ -187,12 +190,13 @@ class AidDistributionImportService
         }
 
         $officeId = $this->resolveOfficeId($row['almktb'] ?? null, $row['mkan_alskn'] ?? null);
-        $user = Auth::user();
+        $user = $this->currentUser;
         if ($user?->user_type === 'employee') {
             $officeId = $user->office_id;
-        }
-
-        if ($officeId === null) {
+            if ($officeId === null) {
+                $errors[] = 'الموظف يجب أن يكون مرتبطاً بمكتب';
+            }
+        } elseif ($officeId === null) {
             $errors[] = 'المكتب غير موجود';
         }
 
@@ -349,9 +353,11 @@ class AidDistributionImportService
     private function validateProjectConstraints(array $normalizedRows): array
     {
         $projectAggregation = [];
+        $projectOfficeAggregation = [];
 
         foreach ($normalizedRows as $normalized) {
             $projectId = $normalized['payload']['project_id'];
+            $officeId = $normalized['payload']['office_id'];
             if (!$projectId) {
                 continue;
             }
@@ -369,6 +375,26 @@ class AidDistributionImportService
                 $projectAggregation[$projectId]['cash_amount'] += (float) ($normalized['payload']['cash_amount'] ?? 0);
             } else {
                 $projectAggregation[$projectId]['quantity'] += (float) ($normalized['payload']['quantity'] ?? 0);
+            }
+
+            if ($officeId) {
+                if (!isset($projectOfficeAggregation[$projectId])) {
+                    $projectOfficeAggregation[$projectId] = [];
+                }
+                if (!isset($projectOfficeAggregation[$projectId][$officeId])) {
+                    $projectOfficeAggregation[$projectId][$officeId] = [
+                        'beneficiaries' => 0,
+                        'cash_amount' => 0,
+                        'quantity' => 0,
+                    ];
+                }
+
+                $projectOfficeAggregation[$projectId][$officeId]['beneficiaries'] += 1;
+                if ($normalized['payload']['aid_mode'] === 'cash') {
+                    $projectOfficeAggregation[$projectId][$officeId]['cash_amount'] += (float) ($normalized['payload']['cash_amount'] ?? 0);
+                } else {
+                    $projectOfficeAggregation[$projectId][$officeId]['quantity'] += (float) ($normalized['payload']['quantity'] ?? 0);
+                }
             }
         }
 
@@ -410,6 +436,9 @@ class AidDistributionImportService
                 ];
             }
         }
+
+        $officeAllocationErrors = $this->validateOfficeAllocations($projectOfficeAggregation);
+        $errors = array_merge($errors, $officeAllocationErrors);
 
         return $errors;
     }
@@ -470,10 +499,12 @@ class AidDistributionImportService
     private function validateProjectConstraintsFromRows($rows): array
     {
         $projectAggregation = [];
+        $projectOfficeAggregation = [];
 
         foreach ($rows as $row) {
             $payload = $row->payload;
             $projectId = $payload['project_id'] ?? null;
+            $officeId = $payload['office_id'] ?? null;
             if (!$projectId) {
                 continue;
             }
@@ -491,6 +522,26 @@ class AidDistributionImportService
                 $projectAggregation[$projectId]['cash_amount'] += (float) ($payload['cash_amount'] ?? 0);
             } else {
                 $projectAggregation[$projectId]['quantity'] += (float) ($payload['quantity'] ?? 0);
+            }
+
+            if ($officeId) {
+                if (!isset($projectOfficeAggregation[$projectId])) {
+                    $projectOfficeAggregation[$projectId] = [];
+                }
+                if (!isset($projectOfficeAggregation[$projectId][$officeId])) {
+                    $projectOfficeAggregation[$projectId][$officeId] = [
+                        'beneficiaries' => 0,
+                        'cash_amount' => 0,
+                        'quantity' => 0,
+                    ];
+                }
+
+                $projectOfficeAggregation[$projectId][$officeId]['beneficiaries'] += 1;
+                if ($payload['aid_mode'] === 'cash') {
+                    $projectOfficeAggregation[$projectId][$officeId]['cash_amount'] += (float) ($payload['cash_amount'] ?? 0);
+                } else {
+                    $projectOfficeAggregation[$projectId][$officeId]['quantity'] += (float) ($payload['quantity'] ?? 0);
+                }
             }
         }
 
@@ -533,6 +584,9 @@ class AidDistributionImportService
             }
         }
 
+        $officeAllocationErrors = $this->validateOfficeAllocations($projectOfficeAggregation);
+        $errors = array_merge($errors, $officeAllocationErrors);
+
         return $errors;
     }
 
@@ -542,7 +596,10 @@ class AidDistributionImportService
             return $this->projectCache[$projectNumber];
         }
 
-        $project = Project::query()->where('project_number', $projectNumber)->first();
+        $project = Project::query()
+            ->where('project_number', $projectNumber)
+            ->where('status', 'active')
+            ->first();
         $this->projectCache[$projectNumber] = $project;
 
         return $project;
@@ -828,5 +885,154 @@ class AidDistributionImportService
 
         $aidItem = AidItem::find($aidItemId);
         return $aidItem?->name;
+    }
+
+    private function validateOfficeAllocations(array $projectOfficeAggregation): array
+    {
+        $errors = [];
+
+        foreach ($projectOfficeAggregation as $projectId => $offices) {
+            $project = Project::with('officeAllocations')->find($projectId);
+            if (!$project || !$project->officeAllocations()->exists()) {
+                continue;
+            }
+
+            $allocations = $project->officeAllocations->keyBy('office_id');
+
+            foreach ($offices as $officeId => $requested) {
+                $allocation = $allocations->get($officeId);
+                $office = Office::find($officeId);
+                $officeName = $office?->name ?? "مكتب #{$officeId}";
+
+                if (!$allocation) {
+                    $errors[] = [
+                        'project_number' => $project->project_number,
+                        'project_name' => $project->name,
+                        'office_name' => $officeName,
+                        'type' => 'office_not_allowed',
+                        'message' => "المكتب {$officeName} غير مسموح له بالصرف من المشروع {$project->project_number}",
+                        'requested' => 0,
+                        'available' => 0,
+                    ];
+                    continue;
+                }
+
+                $hasBeneficiariesLimit = $allocation->max_beneficiaries > 0;
+                $hasAmountLimit = $allocation->max_amount !== null && $allocation->max_amount > 0;
+                $hasQuantityLimit = $allocation->max_quantity !== null && $allocation->max_quantity > 0;
+
+                if (!$hasBeneficiariesLimit && !$hasAmountLimit && !$hasQuantityLimit) {
+                    $errors[] = [
+                        'project_number' => $project->project_number,
+                        'project_name' => $project->name,
+                        'office_name' => $officeName,
+                        'type' => 'office_no_allocation',
+                        'message' => "المكتب {$officeName} ليس له حصة محددة من المشروع {$project->project_number}. يجب تحديد على الأقل عدد المستفيدين أو المبلغ/الكمية.",
+                        'requested' => 0,
+                        'available' => 0,
+                    ];
+                    continue;
+                }
+
+                $currentConsumption = AidDistribution::query()
+                    ->where('project_id', $projectId)
+                    ->where('office_id', $officeId)
+                    ->where('status', 'active')
+                    ->selectRaw('COUNT(*) as beneficiaries_count')
+                    ->selectRaw('SUM(CASE WHEN aid_mode = "cash" THEN cash_amount ELSE 0 END) as total_cash')
+                    ->selectRaw('SUM(CASE WHEN aid_mode = "in_kind" THEN quantity ELSE 0 END) as total_quantity')
+                    ->first();
+
+                $consumedBeneficiaries = (int) ($currentConsumption->beneficiaries_count ?? 0);
+                $consumedCash = (float) ($currentConsumption->total_cash ?? 0);
+                $consumedQuantity = (float) ($currentConsumption->total_quantity ?? 0);
+
+                $effectiveBeneficiariesLimit = $hasBeneficiariesLimit 
+                    ? $allocation->max_beneficiaries 
+                    : $project->remaining_beneficiaries;
+
+                $availableBeneficiaries = $effectiveBeneficiariesLimit - $consumedBeneficiaries;
+                $totalBeneficiaries = $consumedBeneficiaries + $requested['beneficiaries'];
+
+                if ($totalBeneficiaries > $effectiveBeneficiariesLimit) {
+                    $limitType = $hasBeneficiariesLimit ? 'حصة المكتب' : 'المتبقي في المشروع';
+                    $errors[] = [
+                        'project_number' => $project->project_number,
+                        'project_name' => $project->name,
+                        'office_name' => $officeName,
+                        'type' => 'office_beneficiaries',
+                        'requested' => $requested['beneficiaries'],
+                        'consumed' => $consumedBeneficiaries,
+                        'available' => $availableBeneficiaries,
+                        'max' => $effectiveBeneficiariesLimit,
+                        'message' => "المكتب {$officeName}: المستفيدين المطلوبين ({$requested['beneficiaries']}) + المصروف ({$consumedBeneficiaries}) = {$totalBeneficiaries} يتجاوز {$limitType} ({$effectiveBeneficiariesLimit}). المتبقي: {$availableBeneficiaries}",
+                    ];
+                }
+
+                if ($project->project_type === 'cash') {
+                    if ($hasAmountLimit) {
+                        $availableCash = $allocation->max_amount - $consumedCash;
+                        $totalCash = $consumedCash + $requested['cash_amount'];
+                        
+                        if ($totalCash > $allocation->max_amount) {
+                            $errors[] = [
+                                'project_number' => $project->project_number,
+                                'project_name' => $project->name,
+                                'office_name' => $officeName,
+                                'type' => 'office_cash_amount',
+                                'requested' => $requested['cash_amount'],
+                                'consumed' => $consumedCash,
+                                'available' => $availableCash,
+                                'max' => $allocation->max_amount,
+                                'message' => "المكتب {$officeName}: المبلغ المطلوب (" . number_format($requested['cash_amount'], 2) . " ₪) + المصروف (" . number_format($consumedCash, 2) . " ₪) = " . number_format($totalCash, 2) . " ₪ يتجاوز حصة المكتب (" . number_format($allocation->max_amount, 2) . " ₪). المتبقي: " . number_format($availableCash, 2) . " ₪",
+                            ];
+                        }
+                    } elseif (!$hasBeneficiariesLimit) {
+                        $errors[] = [
+                            'project_number' => $project->project_number,
+                            'project_name' => $project->name,
+                            'office_name' => $officeName,
+                            'type' => 'office_missing_limit',
+                            'message' => "المكتب {$officeName}: يجب تحديد حد للمبلغ أو عدد المستفيدين في المشروع النقدي {$project->project_number}",
+                            'requested' => $requested['cash_amount'] ?? 0,
+                            'available' => 0,
+                        ];
+                    }
+                }
+
+                if ($project->project_type === 'in_kind') {
+                    if ($hasQuantityLimit) {
+                        $availableQuantity = $allocation->max_quantity - $consumedQuantity;
+                        $totalQuantity = $consumedQuantity + $requested['quantity'];
+                        
+                        if ($totalQuantity > $allocation->max_quantity) {
+                            $errors[] = [
+                                'project_number' => $project->project_number,
+                                'project_name' => $project->name,
+                                'office_name' => $officeName,
+                                'type' => 'office_quantity',
+                                'requested' => $requested['quantity'],
+                                'consumed' => $consumedQuantity,
+                                'available' => $availableQuantity,
+                                'max' => $allocation->max_quantity,
+                                'message' => "المكتب {$officeName}: الكمية المطلوبة (" . number_format($requested['quantity'], 2) . ") + المصروف (" . number_format($consumedQuantity, 2) . ") = " . number_format($totalQuantity, 2) . " يتجاوز حصة المكتب (" . number_format($allocation->max_quantity, 2) . "). المتبقي: " . number_format($availableQuantity, 2),
+                            ];
+                        }
+                    } elseif (!$hasBeneficiariesLimit) {
+                        $errors[] = [
+                            'project_number' => $project->project_number,
+                            'project_name' => $project->name,
+                            'office_name' => $officeName,
+                            'type' => 'office_missing_limit',
+                            'message' => "المكتب {$officeName}: يجب تحديد حد للكمية أو عدد المستفيدين في المشروع العيني {$project->project_number}",
+                            'requested' => $requested['quantity'] ?? 0,
+                            'available' => 0,
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $errors;
     }
 }

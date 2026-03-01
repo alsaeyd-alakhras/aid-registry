@@ -55,6 +55,10 @@ class ProjectController extends Controller
                     'dependency_display' => $project->dependency_type === 'admin'
                         ? 'الإدارة'
                         : ($project->dependencyOffice?->name ?? '-'),
+                    'status' => $project->status ?? 'active',
+                    'status_display' => ($project->status ?? 'active') === 'active' ? 'فعال' : 'مغلق',
+                    'can_edit' => Auth::user()->can('update', $project),
+                    'can_delete' => Auth::user()->can('delete', $project),
                 ];
             })->values();
 
@@ -83,6 +87,7 @@ class ProjectController extends Controller
         $project = new Project([
             'project_type' => 'cash',
             'beneficiaries_total' => 0,
+            'status' => 'active',
         ]);
         $isEdit = false;
 
@@ -108,7 +113,12 @@ class ProjectController extends Controller
                 // استخدام الرقم اليدوي من المستخدم
                 $projectNumber = $validated['project_number'];
 
-                Project::create([
+                $status = 'active';
+                if ($user->user_type !== 'employee' && isset($validated['status'])) {
+                    $status = $validated['status'];
+                }
+
+                $project = Project::create([
                     'project_number' => $projectNumber,
                     'name' => $validated['name'],
                     'institution_id' => $validated['institution_id'],
@@ -125,7 +135,16 @@ class ProjectController extends Controller
                     'dependency_type' => $dependencyType,
                     'dependency_office_id' => $dependencyOfficeId,
                     'notes' => $validated['notes'] ?? null,
+                    'project_date' => $validated['project_date'] ?? null,
+                    'execution_date' => $validated['execution_date'] ?? null,
+                    'receipt_date' => $validated['receipt_date'] ?? null,
+                    'department' => $validated['department'] ?? null,
+                    'supervisor_name' => $validated['supervisor_name'] ?? null,
+                    'execution_location' => $validated['execution_location'] ?? null,
+                    'status' => $status,
                 ]);
+
+                $this->saveAllocations($project, $request->input('allocations', []));
 
                 DB::commit();
             } catch (\Throwable $e) {
@@ -148,7 +167,7 @@ class ProjectController extends Controller
 
     public function edit(Project $project)
     {
-        $this->authorize('update', Project::class);
+        $this->authorize('update', $project);
 
         $institutions = Institution::query()->where('is_active', true)->orderBy('name')->get();
         $aidItems = AidItem::query()->where('is_active', true)->orderBy('name')->get();
@@ -161,14 +180,14 @@ class ProjectController extends Controller
 
     public function update(Request $request, Project $project)
     {
-        $this->authorize('update', Project::class);
+        $this->authorize('update', $project);
 
         try {
             $validated = $this->validateForm($request);
 
             DB::beginTransaction();
             try {
-                $project->update([
+                $updateData = [
                     'project_number' => $validated['project_number'],
                     'name' => $validated['name'],
                     'institution_id' => $validated['institution_id'],
@@ -179,7 +198,20 @@ class ProjectController extends Controller
                     'estimated_amount' => $validated['estimated_amount'] ?? null,
                     'beneficiaries_total' => $validated['beneficiaries_total'],
                     'notes' => $validated['notes'] ?? null,
-                ]);
+                    'project_date' => $validated['project_date'] ?? null,
+                    'execution_date' => $validated['execution_date'] ?? null,
+                    'receipt_date' => $validated['receipt_date'] ?? null,
+                    'department' => $validated['department'] ?? null,
+                    'supervisor_name' => $validated['supervisor_name'] ?? null,
+                    'execution_location' => $validated['execution_location'] ?? null,
+                ];
+                if (Auth::user()->user_type !== 'employee' && isset($validated['status'])) {
+                    $updateData['status'] = $validated['status'];
+                }
+                $project->update($updateData);
+
+                $project->officeAllocations()->delete();
+                $this->saveAllocations($project, $request->input('allocations', []));
 
                 DB::commit();
             } catch (\Throwable $e) {
@@ -202,7 +234,7 @@ class ProjectController extends Controller
 
     public function destroy(Project $project)
     {
-        $this->authorize('delete', Project::class);
+        $this->authorize('delete', $project);
 
         if ($project->aidDistributions()->exists()) {
             if (request()->ajax()) {
@@ -239,6 +271,7 @@ class ProjectController extends Controller
             'aid_item_name' => $rows->filter(fn($p) => $p->project_type === 'in_kind')->pluck('aidItem.name')->filter()->unique()->values()->toArray(),
             'creator_name' => $rows->pluck('creator.name')->filter()->unique()->values()->toArray(),
             'dependency_display' => $rows->map(fn($p) => $p->dependency_type === 'admin' ? 'الإدارة' : ($p->dependencyOffice?->name ?? '-'))->unique()->values()->toArray(),
+            'status_display' => $rows->pluck('status')->filter()->map(fn($s) => $s === 'active' ? 'فعال' : 'مغلق')->unique()->values()->toArray(),
             default => [],
         };
 
@@ -265,6 +298,13 @@ class ProjectController extends Controller
             'estimated_amount' => 'nullable|numeric|min:0',
             'beneficiaries_total' => 'required|integer|min:1',
             'notes' => 'nullable|string',
+            'project_date' => 'nullable|date',
+            'execution_date' => 'nullable|date',
+            'receipt_date' => 'nullable|date',
+            'department' => 'nullable|string|max:255',
+            'supervisor_name' => 'nullable|string|max:255',
+            'execution_location' => 'nullable|string|max:255',
+            'status' => 'nullable|in:active,closed',
         ], [
             'project_number.required' => 'رقم المشروع مطلوب',
             'project_number.unique' => 'رقم المشروع موجود مسبقاً، يرجى اختيار رقم آخر',
@@ -314,6 +354,10 @@ class ProjectController extends Controller
                     $mapped = array_map(fn($v) => $v === 'نقدي' ? 'cash' : ($v === 'عيني' ? 'in_kind' : $v), $filteredValues);
                     $query->whereIn('project_type', $mapped);
                     break;
+                case 'status_display':
+                    $mapped = array_map(fn($v) => $v === 'فعال' ? 'active' : ($v === 'مغلق' ? 'closed' : $v), $filteredValues);
+                    $query->whereIn('status', $mapped);
+                    break;
                 default:
                     $query->whereIn($fieldName, $filteredValues);
                     break;
@@ -321,16 +365,76 @@ class ProjectController extends Controller
         }
     }
 
-    public function getProjectsByInstitution(int $institutionId)
+    public function getProjectsByInstitution(Request $request, int $institutionId)
     {
         $this->authorize('view', Project::class);
 
+        $officeId = $request->query('office_id') ? (int) $request->query('office_id') : null;
+
         $projects = ProjectStat::query()
             ->where('institution_id', $institutionId)
+            ->where('status', 'active')
             ->orderBy('project_number')
-            ->get()
-            ->map(function ($project) {
-                return [
+            ->get();
+
+        $result = [];
+        foreach ($projects as $project) {
+            $projectModel = Project::with('officeAllocations')->find($project->id);
+            $hasAllocations = $projectModel && $projectModel->officeAllocations()->exists();
+
+            if ($hasAllocations && $officeId === null) {
+                continue;
+            }
+
+            if ($officeId !== null && $hasAllocations) {
+                $allocation = $projectModel->officeAllocations()->where('office_id', $officeId)->first();
+                if (!$allocation) {
+                    continue;
+                }
+                $consumed = AidDistribution::query()
+                    ->where('project_id', $project->id)
+                    ->where('office_id', $officeId)
+                    ->where('status', 'active')
+                    ->selectRaw('COUNT(*) as beneficiaries_count')
+                    ->selectRaw('SUM(CASE WHEN aid_mode = "cash" THEN cash_amount ELSE 0 END) as total_cash')
+                    ->selectRaw('SUM(CASE WHEN aid_mode = "in_kind" THEN quantity ELSE 0 END) as total_quantity')
+                    ->first();
+
+                $consumedBeneficiaries = (int) ($consumed->beneficiaries_count ?? 0);
+                $consumedCash = (float) ($consumed->total_cash ?? 0);
+                $consumedQuantity = (float) ($consumed->total_quantity ?? 0);
+
+                $officeRemainingBeneficiaries = max(0, $allocation->max_beneficiaries - $consumedBeneficiaries);
+                $officeRemainingAmount = $allocation->max_amount !== null ? max(0, (float) $allocation->max_amount - $consumedCash) : null;
+                $officeRemainingQuantity = $allocation->max_quantity !== null ? max(0, (float) $allocation->max_quantity - $consumedQuantity) : null;
+
+                $canUse = $officeRemainingBeneficiaries > 0
+                    && ($project->project_type !== 'cash' || $officeRemainingAmount === null || $officeRemainingAmount > 0)
+                    && ($project->project_type !== 'in_kind' || $officeRemainingQuantity === null || $officeRemainingQuantity > 0);
+
+                if (!$canUse) {
+                    continue;
+                }
+
+                $result[] = [
+                    'id' => $project->id,
+                    'project_number' => $project->project_number,
+                    'name' => $project->name,
+                    'project_type' => $project->project_type,
+                    'aid_item_id' => $project->aid_item_id,
+                    'remaining_amount' => $officeRemainingAmount ?? (float) $project->remaining_amount,
+                    'remaining_quantity' => $officeRemainingQuantity ?? (float) $project->remaining_quantity,
+                    'remaining_beneficiaries' => $officeRemainingBeneficiaries,
+                    'total_amount' => (float) $project->total_amount_ils,
+                    'total_quantity' => (float) $project->total_quantity,
+                    'beneficiaries_total' => (int) $project->beneficiaries_total,
+                    'by_office' => true,
+                ];
+            } else {
+                if ($project->remaining_beneficiaries <= 0) {
+                    continue;
+                }
+                $result[] = [
                     'id' => $project->id,
                     'project_number' => $project->project_number,
                     'name' => $project->name,
@@ -342,17 +446,53 @@ class ProjectController extends Controller
                     'total_amount' => (float) $project->total_amount_ils,
                     'total_quantity' => (float) $project->total_quantity,
                     'beneficiaries_total' => (int) $project->beneficiaries_total,
+                    'by_office' => false,
                 ];
-            });
+            }
+        }
 
-        return response()->json($projects);
+        return response()->json($result);
     }
 
-    public function getProjectStats(int $projectId)
+    public function getProjectStats(Request $request, int $projectId)
     {
         $this->authorize('view', Project::class);
 
+        $officeId = $request->query('office_id') ? (int) $request->query('office_id') : null;
         $project = ProjectStat::query()->findOrFail($projectId);
+        if (($project->status ?? 'active') !== 'active') {
+            abort(404, 'المشروع مغلق ولا يقبل صرفاً.');
+        }
+        $projectModel = Project::with('officeAllocations')->find($projectId);
+        $hasAllocations = $projectModel && $projectModel->officeAllocations()->exists();
+
+        $remainingAmount = (float) $project->remaining_amount;
+        $remainingQuantity = (float) $project->remaining_quantity;
+        $remainingBeneficiaries = (int) $project->remaining_beneficiaries;
+        $byOffice = false;
+
+        if ($officeId !== null && $hasAllocations) {
+            $allocation = $projectModel->officeAllocations()->where('office_id', $officeId)->first();
+            if ($allocation) {
+                $consumed = AidDistribution::query()
+                    ->where('project_id', $projectId)
+                    ->where('office_id', $officeId)
+                    ->where('status', 'active')
+                    ->selectRaw('COUNT(*) as beneficiaries_count')
+                    ->selectRaw('SUM(CASE WHEN aid_mode = "cash" THEN cash_amount ELSE 0 END) as total_cash')
+                    ->selectRaw('SUM(CASE WHEN aid_mode = "in_kind" THEN quantity ELSE 0 END) as total_quantity')
+                    ->first();
+
+                $consumedBeneficiaries = (int) ($consumed->beneficiaries_count ?? 0);
+                $consumedCash = (float) ($consumed->total_cash ?? 0);
+                $consumedQuantity = (float) ($consumed->total_quantity ?? 0);
+
+                $remainingBeneficiaries = max(0, $allocation->max_beneficiaries - $consumedBeneficiaries);
+                $remainingAmount = $allocation->max_amount !== null ? max(0, (float) $allocation->max_amount - $consumedCash) : (float) $project->remaining_amount;
+                $remainingQuantity = $allocation->max_quantity !== null ? max(0, (float) $allocation->max_quantity - $consumedQuantity) : (float) $project->remaining_quantity;
+                $byOffice = true;
+            }
+        }
 
         return response()->json([
             'id' => $project->id,
@@ -362,13 +502,14 @@ class ProjectController extends Controller
             'aid_item_id' => $project->aid_item_id,
             'total_amount' => (float) $project->total_amount_ils,
             'consumed_amount' => (float) $project->consumed_amount,
-            'remaining_amount' => (float) $project->remaining_amount,
+            'remaining_amount' => $remainingAmount,
             'total_quantity' => (float) $project->total_quantity,
             'consumed_quantity' => (float) $project->consumed_quantity,
-            'remaining_quantity' => (float) $project->remaining_quantity,
+            'remaining_quantity' => $remainingQuantity,
             'beneficiaries_total' => (int) $project->beneficiaries_total,
             'beneficiaries_consumed' => (int) $project->beneficiaries_consumed,
-            'remaining_beneficiaries' => (int) $project->remaining_beneficiaries,
+            'remaining_beneficiaries' => $remainingBeneficiaries,
+            'by_office' => $byOffice,
         ]);
     }
 
@@ -408,5 +549,27 @@ class ProjectController extends Controller
             ],
             'breakdown' => $breakdown,
         ]);
+    }
+
+    private function saveAllocations(Project $project, array $allocations): void
+    {
+        foreach ($allocations as $officeId => $data) {
+            if (!isset($data['enabled']) || $data['enabled'] != 1) {
+                continue;
+            }
+
+            $maxBeneficiaries = (int) ($data['max_beneficiaries'] ?? 0);
+            $maxAmount = isset($data['max_amount']) && $data['max_amount'] !== '' ? (float) $data['max_amount'] : null;
+            $maxQuantity = isset($data['max_quantity']) && $data['max_quantity'] !== '' ? (float) $data['max_quantity'] : null;
+
+            if ($maxBeneficiaries > 0 || $maxAmount > 0 || $maxQuantity > 0) {
+                $project->officeAllocations()->create([
+                    'office_id' => $officeId,
+                    'max_beneficiaries' => $maxBeneficiaries,
+                    'max_amount' => $maxAmount,
+                    'max_quantity' => $maxQuantity,
+                ]);
+            }
+        }
     }
 }

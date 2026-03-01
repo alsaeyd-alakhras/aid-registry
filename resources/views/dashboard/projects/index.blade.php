@@ -55,6 +55,7 @@
             'beneficiaries_remaining' => 'المتبقي',
             'dependency_display' => 'التبعية',
             'creator_name' => 'المُنشئ',
+            'status_display' => 'الحالة',
         ];
     @endphp
     <div class="shadow-lg enhanced-card">
@@ -210,6 +211,7 @@
                 'beneficiaries_remaining',
                 'dependency_display',
                 'creator_name',
+                'status_display',
                 'delete'
             ];
 
@@ -231,9 +233,9 @@
                     orderable: false,
                     class: 'enhanced-sticky',
                     searchable: false,
-                    render: function(data) {
+                    render: function(data, type, row) {
                         let linkedit = ``;
-                        if (abilityEdit) {
+                        if (row.can_edit) {
                             linkedit = `
                             <a href="${urlEdit.replace(':id', data)}"
                                 class="action-btn btn-edit"
@@ -326,13 +328,23 @@
                     orderable: false
                 },
                 {
+                    data: 'status_display',
+                    name: 'status_display',
+                    orderable: false,
+                    class: 'text-center',
+                    render: function(data) {
+                        const badge = data === 'فعال' ? 'bg-success' : 'bg-secondary';
+                        return `<span class="badge ${badge}">${data}</span>`;
+                    }
+                },
+                {
                     data: 'delete',
                     name: 'delete',
                     orderable: false,
                     searchable: false,
-                    render: function(data) {
+                    render: function(data, type, row) {
                         let linkdelete = '';
-                        if (abilityDelete) {
+                        if (row.can_delete) {
                             linkdelete = `
                             <button class="action-btn btn-delete delete_row"
                                     data-id="${data}"
@@ -351,8 +363,8 @@
             ];
 
             const dataForm = {};
-            const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
-            const columnNamesCopy = ['project_number', 'name', 'institution_name', 'project_type', 'aid_item_name', 'total_display', 'consumed_display', 'remaining_display', 'beneficiaries_total', 'beneficiaries_consumed', 'beneficiaries_remaining', 'dependency_display', 'creator_name'];
+            const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+            const columnNamesCopy = ['project_number', 'name', 'institution_name', 'project_type', 'aid_item_name', 'total_display', 'consumed_display', 'remaining_display', 'beneficiaries_total', 'beneficiaries_consumed', 'beneficiaries_remaining', 'dependency_display', 'creator_name', 'status_display'];
         </script>
         <script type="text/javascript" src="{{ asset('js/datatable.js') }}"></script>
 

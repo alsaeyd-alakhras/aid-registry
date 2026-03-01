@@ -127,6 +127,30 @@
                             required
                         />
                     </div>
+                    <div class="mb-4 col-md-6">
+                        <x-form.input
+                            type="date"
+                            name="project_date"
+                            label="تاريخ المشروع (اختياري)"
+                            :value="$project->project_date?->format('Y-m-d')"
+                        />
+                    </div>
+                    <div class="mb-4 col-md-6">
+                        <x-form.input
+                            type="date"
+                            name="execution_date"
+                            label="تاريخ التنفيذ (اختياري)"
+                            :value="$project->execution_date?->format('Y-m-d')"
+                        />
+                    </div>
+                    <div class="mb-4 col-md-6">
+                        <x-form.input
+                            type="date"
+                            name="receipt_date"
+                            label="تاريخ الاستلام (اختياري)"
+                            :value="$project->receipt_date?->format('Y-m-d')"
+                        />
+                    </div>
                     @if($isEdit)
                         <div class="mb-4 col-md-6">
                             <label class="form-label">الكمية المستهلكة</label>
@@ -158,6 +182,134 @@
                             :value="$project->notes"
                         />
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">تفاصيل المشروع</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="mb-4 col-md-6">
+                        <x-form.input
+                            name="department"
+                            label="القسم (اختياري)"
+                            :value="$project->department"
+                        />
+                    </div>
+                    <div class="mb-4 col-md-6">
+                        <x-form.input
+                            name="supervisor_name"
+                            label="اسم المشرف المتابع (اختياري)"
+                            :value="$project->supervisor_name"
+                        />
+                    </div>
+                    <div class="mb-4 col-12">
+                        <x-form.input
+                            name="execution_location"
+                            label="مكان التنفيذ (اختياري)"
+                            :value="$project->execution_location"
+                        />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">توزيع الحصص على المكاتب</h5>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <div id="allocation-summary-beneficiaries" class="badge bg-secondary" style="font-size: 0.85rem;">
+                        👥 <span id="total-allocated-beneficiaries">0</span> / <span id="total-beneficiaries-display">0</span>
+                    </div>
+                    <div id="allocation-summary-amount" class="badge bg-secondary allocation-amount-summary" style="font-size: 0.85rem; display: none;">
+                        💰 <span id="total-allocated-amount">0</span> / <span id="total-amount-display">0</span> ₪
+                    </div>
+                    <div id="allocation-summary-quantity" class="badge bg-secondary allocation-quantity-summary" style="font-size: 0.85rem; display: none;">
+                        📦 <span id="total-allocated-quantity">0</span> / <span id="total-quantity-display">0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">
+                    <small>حدد حصة كل مكتب من المشروع (اختياري). إذا لم يتم تحديد توزيعات، سيتمكن جميع المكاتب من الصرف من المشروع.</small>
+                </p>
+                <div class="alert alert-info py-2 mb-3" id="allocation-warning" style="display: none;">
+                    <small>
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        <strong>تنبيه:</strong> <span id="allocation-warning-text"></span>
+                    </small>
+                </div>
+                <div id="office-allocations-container">
+                    @php
+                        $existingAllocations = $isEdit ? $project->officeAllocations->keyBy('office_id') : collect();
+                        $offices = $offices ?? \App\Models\Office::where('is_active', true)->orderBy('name')->get();
+                    @endphp
+                    
+                    @foreach($offices as $office)
+                        @php
+                            $allocation = $existingAllocations->get($office->id);
+                        @endphp
+                        <div class="office-allocation-row mb-3 p-3 border rounded" data-office-id="{{ $office->id }}">
+                            <div class="form-check mb-2">
+                                <input 
+                                    class="form-check-input office-allocation-checkbox" 
+                                    type="checkbox" 
+                                    name="allocations[{{ $office->id }}][enabled]"
+                                    id="office_{{ $office->id }}_enabled"
+                                    value="1"
+                                    @checked($allocation !== null)
+                                >
+                                <label class="form-check-label fw-bold" for="office_{{ $office->id }}_enabled">
+                                    {{ $office->name }}
+                                </label>
+                            </div>
+                            <div class="allocation-fields" style="display: {{ $allocation ? 'block' : 'none' }};">
+                                <div class="row">
+                                    <div class="col-md-4 mb-2">
+                                        <label class="form-label small">عدد المستفيدين</label>
+                                        <input 
+                                            type="number" 
+                                            class="form-control form-control-sm allocation-beneficiaries-input" 
+                                            name="allocations[{{ $office->id }}][max_beneficiaries]"
+                                            min="0"
+                                            step="1"
+                                            value="{{ $allocation?->max_beneficiaries ?? 0 }}"
+                                            data-office-id="{{ $office->id }}"
+                                        >
+                                    </div>
+                                    <div class="col-md-4 mb-2 allocation-amount-field">
+                                        <label class="form-label small">المبلغ (₪)</label>
+                                        <input 
+                                            type="number" 
+                                            class="form-control form-control-sm allocation-amount-input" 
+                                            name="allocations[{{ $office->id }}][max_amount]"
+                                            min="0"
+                                            step="0.01"
+                                            value="{{ $allocation?->max_amount ?? '' }}"
+                                            data-office-id="{{ $office->id }}"
+                                        >
+                                    </div>
+                                    <div class="col-md-4 mb-2 allocation-quantity-field">
+                                        <label class="form-label small">الكمية</label>
+                                        <input 
+                                            type="number" 
+                                            class="form-control form-control-sm allocation-quantity-input" 
+                                            name="allocations[{{ $office->id }}][max_quantity]"
+                                            min="0"
+                                            step="1"
+                                            value="{{ $allocation?->max_quantity ?? '' }}"
+                                            data-office-id="{{ $office->id }}"
+                                        >
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
                 </div>
             </div>
         </div>
@@ -202,8 +354,27 @@
                     </div>
                 @endif
 
+                @if(!$isEmployee)
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label" for="status">حالة المشروع</label>
+                        <select
+                            id="status"
+                            name="status"
+                            class="form-select @error('status') is-invalid @enderror"
+                        >
+                            <option value="active" @selected(old('status', $project->status ?? 'active') === 'active')>فعال</option>
+                            <option value="closed" @selected(old('status', $project->status ?? 'active') === 'closed')>مغلق</option>
+                        </select>
+                        @error('status')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                        <small class="text-muted">المشروع المغلق لا يقبل صرفاً جديداً</small>
+                    </div>
+                @endif
+
                 <div class="d-grid gap-2 mt-4">
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" id="submit-project-btn">
                         {{ $isEdit ? 'تحديث المشروع' : 'حفظ المشروع' }}
                     </button>
                     <a href="{{ route('dashboard.projects.index') }}" class="btn btn-outline-secondary">
@@ -244,10 +415,184 @@
                 } else if (type === 'in_kind') {
                     $('#total_amount_ils').val('');
                 }
+
+                $('.allocation-amount-field').toggle(type === 'cash');
+                $('.allocation-quantity-field').toggle(type === 'in_kind');
+                $('.allocation-amount-summary').toggle(type === 'cash');
+                $('.allocation-quantity-summary').toggle(type === 'in_kind');
+                updateAllocationSummary();
             }
 
             $('#project_type').on('change', toggleProjectTypeFields);
             toggleProjectTypeFields();
+
+            $('.office-allocation-checkbox').on('change', function() {
+                const $row = $(this).closest('.office-allocation-row');
+                const $fields = $row.find('.allocation-fields');
+                
+                if ($(this).is(':checked')) {
+                    $fields.slideDown();
+                } else {
+                    $fields.slideUp();
+                    $row.find('.allocation-beneficiaries-input').val(0);
+                    $row.find('.allocation-amount-input').val('');
+                    $row.find('.allocation-quantity-input').val('');
+                }
+                updateAllocationSummary();
+            });
+
+            function updateAllocationSummary() {
+                const projectType = $('#project_type').val();
+                const totalBeneficiaries = parseInt($('input[name="beneficiaries_total"]').val()) || 0;
+                const totalAmount = parseFloat($('#total_amount_ils').val()) || 0;
+                const totalQuantity = parseFloat($('#total_quantity').val()) || 0;
+                
+                let allocatedBeneficiaries = 0;
+                let allocatedAmount = 0;
+                let allocatedQuantity = 0;
+
+                $('.office-allocation-checkbox:checked').each(function() {
+                    const $row = $(this).closest('.office-allocation-row');
+                    allocatedBeneficiaries += parseInt($row.find('.allocation-beneficiaries-input').val()) || 0;
+                    allocatedAmount += parseFloat($row.find('.allocation-amount-input').val()) || 0;
+                    allocatedQuantity += parseFloat($row.find('.allocation-quantity-input').val()) || 0;
+                });
+
+                $('#total-beneficiaries-display').text(totalBeneficiaries);
+                $('#total-allocated-beneficiaries').text(allocatedBeneficiaries);
+                $('#total-amount-display').text(totalAmount.toFixed(2));
+                $('#total-allocated-amount').text(allocatedAmount.toFixed(2));
+                $('#total-quantity-display').text(totalQuantity.toFixed(2));
+                $('#total-allocated-quantity').text(allocatedQuantity.toFixed(2));
+
+                const $summaryBeneficiaries = $('#allocation-summary-beneficiaries');
+                const $summaryAmount = $('#allocation-summary-amount');
+                const $summaryQuantity = $('#allocation-summary-quantity');
+                const $warning = $('#allocation-warning');
+                const $warningText = $('#allocation-warning-text');
+                const $submitBtn = $('#submit-project-btn');
+
+                let hasError = false;
+                let hasWarning = false;
+                let warnings = [];
+
+                if (allocatedBeneficiaries > totalBeneficiaries) {
+                    $summaryBeneficiaries.removeClass('bg-secondary bg-warning bg-success').addClass('bg-danger');
+                    warnings.push(`المستفيدين: المخصص (${allocatedBeneficiaries}) يتجاوز الإجمالي (${totalBeneficiaries})`);
+                    hasError = true;
+                } else if (totalBeneficiaries > 0 && allocatedBeneficiaries < totalBeneficiaries && allocatedBeneficiaries > 0) {
+                    $summaryBeneficiaries.removeClass('bg-secondary bg-danger bg-success').addClass('bg-warning');
+                    const remaining = totalBeneficiaries - allocatedBeneficiaries;
+                    warnings.push(`المستفيدين: باقي ${remaining} غير مخصص`);
+                    hasWarning = true;
+                } else if (totalBeneficiaries > 0 && allocatedBeneficiaries === totalBeneficiaries) {
+                    $summaryBeneficiaries.removeClass('bg-secondary bg-danger bg-warning').addClass('bg-success');
+                } else {
+                    $summaryBeneficiaries.removeClass('bg-danger bg-warning bg-success').addClass('bg-secondary');
+                }
+
+                if (projectType === 'cash') {
+                    if (allocatedAmount > totalAmount) {
+                        $summaryAmount.removeClass('bg-secondary bg-warning bg-success').addClass('bg-danger');
+                        warnings.push(`المبلغ: المخصص (${allocatedAmount.toFixed(2)} ₪) يتجاوز الإجمالي (${totalAmount.toFixed(2)} ₪)`);
+                        hasError = true;
+                    } else if (allocatedAmount < totalAmount && allocatedAmount > 0 && totalAmount > 0) {
+                        $summaryAmount.removeClass('bg-secondary bg-danger bg-success').addClass('bg-warning');
+                        const remaining = totalAmount - allocatedAmount;
+                        warnings.push(`المبلغ: باقي ${remaining.toFixed(2)} ₪ غير مخصص`);
+                        hasWarning = true;
+                    } else if (allocatedAmount === totalAmount && allocatedAmount > 0) {
+                        $summaryAmount.removeClass('bg-secondary bg-danger bg-warning').addClass('bg-success');
+                    } else {
+                        $summaryAmount.removeClass('bg-danger bg-warning bg-success').addClass('bg-secondary');
+                    }
+                }
+
+                if (projectType === 'in_kind') {
+                    if (allocatedQuantity > totalQuantity) {
+                        $summaryQuantity.removeClass('bg-secondary bg-warning bg-success').addClass('bg-danger');
+                        warnings.push(`الكمية: المخصص (${allocatedQuantity.toFixed(2)}) يتجاوز الإجمالي (${totalQuantity.toFixed(2)})`);
+                        hasError = true;
+                    } else if (allocatedQuantity < totalQuantity && allocatedQuantity > 0 && totalQuantity > 0) {
+                        $summaryQuantity.removeClass('bg-secondary bg-danger bg-success').addClass('bg-warning');
+                        const remaining = totalQuantity - allocatedQuantity;
+                        warnings.push(`الكمية: باقي ${remaining.toFixed(2)} غير مخصص`);
+                        hasWarning = true;
+                    } else if (allocatedQuantity === totalQuantity && allocatedQuantity > 0) {
+                        $summaryQuantity.removeClass('bg-secondary bg-danger bg-warning').addClass('bg-success');
+                    } else {
+                        $summaryQuantity.removeClass('bg-danger bg-warning bg-success').addClass('bg-secondary');
+                    }
+                }
+
+                if (hasError) {
+                    $warningText.html('<strong>خطأ:</strong><br>' + warnings.join('<br>'));
+                    $warning.removeClass('alert-info alert-success').addClass('alert-danger').show();
+                    $submitBtn.prop('disabled', true).addClass('disabled');
+                } else {
+                    $submitBtn.prop('disabled', false).removeClass('disabled');
+                    
+                    if (hasWarning) {
+                        $warningText.html('<strong>تنبيه:</strong><br>' + warnings.join('<br>'));
+                        $warning.removeClass('alert-danger alert-success').addClass('alert-info').show();
+                    } else if (allocatedBeneficiaries > 0 || allocatedAmount > 0 || allocatedQuantity > 0) {
+                        $warningText.text('✓ تم توزيع الحصص بشكل صحيح!');
+                        $warning.removeClass('alert-danger alert-info').addClass('alert-success').show();
+                    } else {
+                        $warning.hide();
+                    }
+                }
+            }
+
+            $('input[name="beneficiaries_total"]').on('input', updateAllocationSummary);
+            $('#total_amount_ils').on('input', updateAllocationSummary);
+            $('#total_quantity').on('input', updateAllocationSummary);
+            $('.allocation-beneficiaries-input').on('input', updateAllocationSummary);
+            $('.allocation-amount-input').on('input', updateAllocationSummary);
+            $('.allocation-quantity-input').on('input', updateAllocationSummary);
+
+            $('form').on('submit', function(e) {
+                const projectType = $('#project_type').val();
+                const totalBeneficiaries = parseInt($('input[name="beneficiaries_total"]').val()) || 0;
+                const totalAmount = parseFloat($('#total_amount_ils').val()) || 0;
+                const totalQuantity = parseFloat($('#total_quantity').val()) || 0;
+                
+                let allocatedBeneficiaries = 0;
+                let allocatedAmount = 0;
+                let allocatedQuantity = 0;
+                let hasAllocations = false;
+                let errors = [];
+
+                $('.office-allocation-checkbox:checked').each(function() {
+                    hasAllocations = true;
+                    const $row = $(this).closest('.office-allocation-row');
+                    allocatedBeneficiaries += parseInt($row.find('.allocation-beneficiaries-input').val()) || 0;
+                    allocatedAmount += parseFloat($row.find('.allocation-amount-input').val()) || 0;
+                    allocatedQuantity += parseFloat($row.find('.allocation-quantity-input').val()) || 0;
+                });
+
+                if (hasAllocations) {
+                    if (allocatedBeneficiaries > totalBeneficiaries) {
+                        errors.push(`• عدد المستفيدين المخصص (${allocatedBeneficiaries}) يتجاوز الإجمالي (${totalBeneficiaries})`);
+                    }
+
+                    if (projectType === 'cash' && totalAmount > 0 && allocatedAmount > totalAmount) {
+                        errors.push(`• المبلغ المخصص (${allocatedAmount.toFixed(2)} ₪) يتجاوز الإجمالي (${totalAmount.toFixed(2)} ₪)`);
+                    }
+
+                    if (projectType === 'in_kind' && totalQuantity > 0 && allocatedQuantity > totalQuantity) {
+                        errors.push(`• الكمية المخصصة (${allocatedQuantity.toFixed(2)}) تتجاوز الإجمالي (${totalQuantity.toFixed(2)})`);
+                    }
+
+                    if (errors.length > 0) {
+                        e.preventDefault();
+                        alert('خطأ في التوزيعات:\n\n' + errors.join('\n') + '\n\nيرجى تعديل التوزيعات قبل الحفظ.');
+                        return false;
+                    }
+                }
+            });
+
+            updateAllocationSummary();
         });
     </script>
 @endpush
