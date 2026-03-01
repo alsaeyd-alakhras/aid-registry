@@ -10,7 +10,7 @@ class ProjectPolicy extends ModelPolicy
     public function update(User $user, Project $project): bool
     {
         if ($user->user_type === 'employee') {
-            return $project->dependency_office_id == $user->office_id;
+            return $project->created_by == $user->id;
         }
 
         $ability = 'projects.update';
@@ -24,7 +24,7 @@ class ProjectPolicy extends ModelPolicy
     public function delete(User $user, Project $project): bool
     {
         if ($user->user_type === 'employee') {
-            return $project->dependency_office_id == $user->office_id;
+            return $project->created_by == $user->id;
         }
 
         $ability = 'projects.delete';

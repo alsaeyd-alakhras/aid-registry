@@ -64,9 +64,29 @@ class ProjectConsumptionService
 
                     $this->validateProjectConstraintsForUpdate($project, $distribution, $validated);
 
-                    $this->applyConsumptionDifference($project, $distribution, $validated);
+                    $isClosed = ($project->status ?? 'active') !== 'active';
+                    if (!$isClosed) {
+                        $this->applyConsumptionDifference($project, $distribution, $validated);
+                    } else {
+                        $oldCash = (float) ($distribution->cash_amount ?? 0);
+                        $newCash = (float) ($validated['cash_amount'] ?? 0);
+                        $oldQty = (float) ($distribution->quantity ?? 0);
+                        $newQty = (float) ($validated['quantity'] ?? 0);
+                        if (($project->project_type === 'cash' && $newCash < $oldCash) || ($project->project_type === 'in_kind' && $newQty < $oldQty)) {
+                            $this->applyConsumptionDifference($project, $distribution, $validated);
+                        }
+                    }
                 }
             } else {
+                if ($oldProjectId) {
+                    $oldProject = Project::query()->find($oldProjectId);
+                    if ($oldProject && ($oldProject->status ?? 'active') === 'closed') {
+                        throw ValidationException::withMessages([
+                            'project_id' => 'لا يمكن تغيير المشروع عندما يكون المشروع الحالي مغلقاً.',
+                        ]);
+                    }
+                }
+
                 $projectsToLock = collect([$oldProjectId, $newProjectId])
                     ->filter()
                     ->unique()
@@ -183,16 +203,25 @@ class ProjectConsumptionService
 
     private function validateProjectConstraintsForUpdate(Project $project, AidDistribution $distribution, array $validated): void
     {
-        if (($project->status ?? 'active') !== 'active') {
-            throw ValidationException::withMessages([
-                'project_id' => "المشروع {$project->name} مغلق ولا يقبل صرفاً جديداً.",
-            ]);
-        }
-
         $oldCashAmount = (float) ($distribution->cash_amount ?? 0);
         $newCashAmount = (float) ($validated['cash_amount'] ?? 0);
         $oldQuantity = (float) ($distribution->quantity ?? 0);
         $newQuantity = (float) ($validated['quantity'] ?? 0);
+
+        $isClosed = ($project->status ?? 'active') !== 'active';
+        if ($isClosed) {
+            if ($project->project_type === 'cash' && $newCashAmount > $oldCashAmount) {
+                throw ValidationException::withMessages([
+                    'cash_amount' => "المشروع {$project->name} مغلق ولا يقبل زيادة في المبلغ.",
+                ]);
+            }
+            if ($project->project_type === 'in_kind' && $newQuantity > $oldQuantity) {
+                throw ValidationException::withMessages([
+                    'quantity' => "المشروع {$project->name} مغلق ولا يقبل زيادة في الكمية.",
+                ]);
+            }
+            return;
+        }
 
         if ($project->project_type === 'cash') {
             $difference = $newCashAmount - $oldCashAmount;
@@ -249,12 +278,14 @@ class ProjectConsumptionService
 
     private function applyConsumptionDifference(Project $project, AidDistribution $distribution, array $validated): void
     {
+        $isClosed = ($project->status ?? 'active') !== 'active';
+
         if ($project->project_type === 'cash') {
             $oldAmount = (float) ($distribution->cash_amount ?? 0);
             $newAmount = (float) ($validated['cash_amount'] ?? 0);
             $difference = $newAmount - $oldAmount;
 
-            if ($difference > 0) {
+            if ($difference > 0 && !$isClosed) {
                 $project->increment('consumed_amount', $difference);
             } elseif ($difference < 0) {
                 $project->decrement('consumed_amount', abs($difference));
@@ -266,7 +297,7 @@ class ProjectConsumptionService
             $newQuantity = (float) ($validated['quantity'] ?? 0);
             $difference = $newQuantity - $oldQuantity;
 
-            if ($difference > 0) {
+            if ($difference > 0 && !$isClosed) {
                 $project->increment('consumed_quantity', $difference);
             } elseif ($difference < 0) {
                 $project->decrement('consumed_quantity', abs($difference));

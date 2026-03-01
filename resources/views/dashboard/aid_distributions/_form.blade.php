@@ -640,7 +640,7 @@
             $('#marital_status').on('change', toggleSpouseFields);
             $('#aid_mode').on('change', toggleAidModeFields);
 
-            function loadProjectsByInstitution(institutionId, selectedProjectId = null) {
+            function loadProjectsByInstitution(institutionId, selectedProjectId = null, includeProjectId = null) {
                 if (!institutionId) {
                     $('#project_id').html('<option value="">اختر المؤسسة أولاً</option>').prop('disabled', false);
                     return;
@@ -649,9 +649,12 @@
                 const officeId = $('#office_id').val() || '';
                 $('#project_id').html('<option value="">جاري التحميل...</option>').prop('disabled', true);
 
-                const url = officeId
+                let url = officeId
                     ? `/api/institutions/${institutionId}/projects?office_id=${officeId}`
                     : `/api/institutions/${institutionId}/projects`;
+                if (includeProjectId) {
+                    url += (url.includes('?') ? '&' : '?') + `include_project_id=${includeProjectId}`;
+                }
 
                 $.ajax({
                     url: url,
@@ -660,7 +663,8 @@
                         let options = '<option value="">اختر المشروع</option>';
                         projects.forEach(function(project) {
                             const suffix = project.by_office ? ' (متبقي للمكتب: ' + project.remaining_beneficiaries + ')' : ' (متبقي: ' + project.remaining_beneficiaries + ')';
-                            const displayText = `${project.project_number} - ${project.name}${suffix}`;
+                            const closedLabel = project.is_closed ? ' (مغلق)' : '';
+                            const displayText = `${project.project_number} - ${project.name}${suffix}${closedLabel}`;
                             const selected = selectedProjectId && project.id == selectedProjectId ? 'selected' : '';
                             options += `<option value="${project.id}" ${selected} data-by-office="${project.by_office ? '1' : '0'}">${displayText}</option>`;
                         });
@@ -682,7 +686,8 @@
                 currentProjectStats = null;
                 updateRemainingMessages();
                 if (institutionId) {
-                    loadProjectsByInstitution(institutionId);
+                    const includeProjectId = {{ $isEdit ? 'true' : 'false' }} ? ($('#project_id').val() || {{ $distribution->project_id ?? 'null' }}) : null;
+                    loadProjectsByInstitution(institutionId, null, includeProjectId);
                 }
             });
 
@@ -690,7 +695,8 @@
                 const institutionId = $(this).val();
                 currentProjectStats = null;
                 updateRemainingMessages();
-                loadProjectsByInstitution(institutionId);
+                const includeProjectId = {{ $isEdit ? 'true' : 'false' }} ? ($('#project_id').val() || {{ $distribution->project_id ?? 'null' }}) : null;
+                loadProjectsByInstitution(institutionId, null, includeProjectId);
             });
 
             $('#project_id').on('change', function() {
@@ -836,7 +842,7 @@
                 const initialInstitutionId = $('#institution_id').val();
                 const initialProjectId = {{ $distribution->project_id ?? 'null' }};
                 if (initialInstitutionId) {
-                    loadProjectsByInstitution(initialInstitutionId, initialProjectId);
+                    loadProjectsByInstitution(initialInstitutionId, initialProjectId, initialProjectId);
                 }
             @endif
 

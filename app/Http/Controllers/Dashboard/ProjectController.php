@@ -370,6 +370,7 @@ class ProjectController extends Controller
         $this->authorize('view', Project::class);
 
         $officeId = $request->query('office_id') ? (int) $request->query('office_id') : null;
+        $includeProjectId = $request->query('include_project_id') ? (int) $request->query('include_project_id') : null;
 
         $projects = ProjectStat::query()
             ->where('institution_id', $institutionId)
@@ -378,6 +379,7 @@ class ProjectController extends Controller
             ->get();
 
         $result = [];
+        $resultIds = [];
         foreach ($projects as $project) {
             $projectModel = Project::with('officeAllocations')->find($project->id);
             $hasAllocations = $projectModel && $projectModel->officeAllocations()->exists();
@@ -429,7 +431,9 @@ class ProjectController extends Controller
                     'total_quantity' => (float) $project->total_quantity,
                     'beneficiaries_total' => (int) $project->beneficiaries_total,
                     'by_office' => true,
+                    'is_closed' => false,
                 ];
+                $resultIds[] = $project->id;
             } else {
                 if ($project->remaining_beneficiaries <= 0) {
                     continue;
@@ -447,6 +451,32 @@ class ProjectController extends Controller
                     'total_quantity' => (float) $project->total_quantity,
                     'beneficiaries_total' => (int) $project->beneficiaries_total,
                     'by_office' => false,
+                    'is_closed' => false,
+                ];
+                $resultIds[] = $project->id;
+            }
+        }
+
+        if ($includeProjectId && !in_array($includeProjectId, $resultIds, true)) {
+            $includedProject = ProjectStat::query()
+                ->where('id', $includeProjectId)
+                ->where('institution_id', $institutionId)
+                ->first();
+            if ($includedProject && ($includedProject->status ?? 'active') === 'closed') {
+                $result[] = [
+                    'id' => $includedProject->id,
+                    'project_number' => $includedProject->project_number,
+                    'name' => $includedProject->name,
+                    'project_type' => $includedProject->project_type,
+                    'aid_item_id' => $includedProject->aid_item_id,
+                    'remaining_amount' => (float) $includedProject->remaining_amount,
+                    'remaining_quantity' => (float) $includedProject->remaining_quantity,
+                    'remaining_beneficiaries' => (int) $includedProject->remaining_beneficiaries,
+                    'total_amount' => (float) $includedProject->total_amount_ils,
+                    'total_quantity' => (float) $includedProject->total_quantity,
+                    'beneficiaries_total' => (int) $includedProject->beneficiaries_total,
+                    'by_office' => false,
+                    'is_closed' => true,
                 ];
             }
         }
