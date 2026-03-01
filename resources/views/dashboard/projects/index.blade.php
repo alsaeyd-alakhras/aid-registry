@@ -192,8 +192,7 @@
             const urlDelete = `{{ route('dashboard.projects.destroy', ':id') }}`;
 
             const abilityCreate = "{{ Auth::user()->can('create', 'App\\Models\\Project') }}";
-            const abilityEdit = "{{ Auth::user()->can('update', 'App\\Models\\Project') }}";
-            const abilityDelete = "{{ Auth::user()->can('delete', 'App\\Models\\Project') }}";
+            // abilityEdit و abilityDelete يُحدّدان لكل صف من السيرفر (can_edit, can_delete)
 
             const fields = [
                 '#',
