@@ -24,7 +24,7 @@ class ProjectController extends Controller
 
         if ($request->ajax()) {
             $projects = Project::query()
-                ->with(['institution', 'aidItem', 'creator', 'dependencyOffice'])
+                ->with(['institution', 'aidItem', 'creator', 'dependencyOffice', 'officeAllocations'])
                 ->orderBy('created_at', 'desc');
 
             if ($request->column_filters) {
@@ -48,6 +48,12 @@ class ProjectController extends Controller
                     'remaining_display' => $project->project_type === 'cash'
                         ? number_format($project->remaining_amount, 2) . ' ₪'
                         : number_format($project->remaining_quantity, 2),
+                    'storage_balance_display' => $project->project_type === 'cash'
+                        ? number_format($project->storage_balance_amount, 2) . ' ₪'
+                        : number_format($project->storage_balance_quantity, 2),
+                    'offices_balance_display' => $project->project_type === 'cash'
+                        ? number_format($project->offices_balance_amount, 2) . ' ₪'
+                        : number_format($project->offices_balance_quantity, 2),
                     'beneficiaries_total' => $project->beneficiaries_total,
                     'beneficiaries_consumed' => $project->beneficiaries_consumed,
                     'beneficiaries_remaining' => $project->remaining_beneficiaries,
@@ -168,6 +174,8 @@ class ProjectController extends Controller
     public function edit(Project $project)
     {
         $this->authorize('update', $project);
+
+        $project->load('officeAllocations');
 
         $institutions = Institution::query()->where('is_active', true)->orderBy('name')->get();
         $aidItems = AidItem::query()->where('is_active', true)->orderBy('name')->get();
@@ -530,6 +538,7 @@ class ProjectController extends Controller
             'name' => $project->name,
             'project_type' => $project->project_type,
             'aid_item_id' => $project->aid_item_id,
+            'notes' => $project->notes ?? null,
             'total_amount' => (float) $project->total_amount_ils,
             'consumed_amount' => (float) $project->consumed_amount,
             'remaining_amount' => $remainingAmount,

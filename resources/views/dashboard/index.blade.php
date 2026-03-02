@@ -33,6 +33,16 @@
                 border-radius: 14px;
                 box-shadow: 0 1px 8px rgba(15, 23, 42, 0.04);
             }
+
+            .table > :not(caption) > * > * {
+                color: #000;
+            }
+
+            .project-notes-popover .popover-body {
+                max-width: 320px;
+                max-height: 200px;
+                overflow-y: auto;
+            }
         </style>
     @endpush
 
@@ -53,8 +63,8 @@
     </x-slot:breadcrumb>
 
     @php
-        $formatMoney = fn ($value) => number_format((float) $value, 2);
-        $formatCount = fn ($value) => number_format((int) $value);
+        $formatMoney = fn($value) => number_format((float) $value, 2);
+        $formatCount = fn($value) => number_format((int) $value);
     @endphp
 
     <div class="p-3 mb-4 dashboard-soft-bg">
@@ -113,6 +123,119 @@
             </div>
         </div>
     </div>
+    <div class="mb-4 card section-card">
+        <div class="py-3 card-header">
+            <h6 class="mb-0">المشاريع</h6>
+        </div>
+        <div class="p-0 card-body">
+            <div class="table-responsive">
+                <table class="table mb-0 table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>رقم المشروع</th>
+                            <th>اسم المشروع</th>
+                            <th>المؤسسة</th>
+                            <th>النوع</th>
+                            <th>عدد المساعدات</th>
+                            <th>الإجمالي</th>
+                            <th>المصروف</th>
+                            <th>المتبقي</th>
+                            @if($showStorageOfficesBalance ?? false)
+                                <th>رصيد المخزن</th>
+                                <th>رصيد المكاتب</th>
+                            @endif
+                            <th>المستفيدين</th>
+                            <th>تفاصيل</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($projectStats as $project)
+                            <tr>
+                                <td>{{ $project['project_number'] }}</td>
+                                <td>{{ $project['name'] }}</td>
+                                <td>{{ $project['institution_name'] }}</td>
+                                <td>
+                                    @if($project['project_type'] === 'cash')
+                                        <span class="badge bg-success">نقدي</span>
+                                    @else
+                                        <span class="badge bg-info">عيني</span>
+                                        <div class="small text-muted">{{ $project['aid_item_name'] }}</div>
+                                    @endif
+                                </td>
+                                <td>{{ $formatCount($project['aid_distributions_count']) }}</td>
+                                <td>
+                                    @if($project['project_type'] === 'cash')
+                                        {{ $formatMoney($project['total_amount']) }} ₪
+                                    @else
+                                        {{ number_format($project['total_quantity'], 2) }}
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($project['project_type'] === 'cash')
+                                        <span class="text-danger">{{ $formatMoney($project['consumed_amount']) }} ₪</span>
+                                    @else
+                                        <span class="text-danger">{{ number_format($project['consumed_quantity'], 2) }}</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($project['project_type'] === 'cash')
+                                        <span class="text-success">{{ $formatMoney($project['remaining_amount']) }} ₪</span>
+                                    @else
+                                        <span class="text-success">{{ number_format($project['remaining_quantity'], 2) }}</span>
+                                    @endif
+                                </td>
+                                @if($showStorageOfficesBalance ?? false)
+                                    <td>
+                                        @if($project['project_type'] === 'cash')
+                                            {{ $formatMoney($project['storage_balance_amount'] ?? 0) }} ₪
+                                        @else
+                                            {{ number_format($project['storage_balance_quantity'] ?? 0, 2) }}
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($project['project_type'] === 'cash')
+                                            {{ $formatMoney($project['offices_balance_amount'] ?? 0) }} ₪
+                                        @else
+                                            {{ number_format($project['offices_balance_quantity'] ?? 0, 2) }}
+                                        @endif
+                                    </td>
+                                @endif
+                                <td>
+                                    <span class="badge bg-primary">{{ $project['beneficiaries_total'] }}</span>
+                                    /
+                                    <span class="badge bg-warning">{{ $project['beneficiaries_consumed'] }}</span>
+                                    /
+                                    <span class="badge bg-success">{{ $project['remaining_beneficiaries'] }}</span>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <button type="button" class="btn btn-sm btn-outline-primary view-project-breakdown-btn"
+                                            data-project-id="{{ $project['id'] }}" title="تفاصيل الصرف">
+                                            <i class="fa-solid fa-eye"></i>
+                                        </button>
+                                        @if(!empty(trim($project['notes'] ?? '')))
+                                            <button type="button" class="btn btn-sm btn-outline-warning project-notes-btn"
+                                                data-notes="{{ e(str_replace(["\r\n","\n","\r"], '||NL||', $project['notes'] ?? '')) }}"
+                                                title="ملاحظات المشروع">
+                                                <i class="fa-solid fa-sticky-note"></i>
+                                            </button>
+                                        @endif
+                                    </div>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="{{ ($showStorageOfficesBalance ?? false) ? 12 : 10 }}" class="py-4 text-center text-muted">لا توجد مشاريع لعرضها</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="pt-3 bg-white card-footer">
+            {{ $projectStats->appends(request()->except('project_page'))->links() }}
+        </div>
+    </div>
 
     <div class="mb-4 card section-card">
         <div class="py-3 card-header d-flex justify-content-between align-items-center">
@@ -149,7 +272,8 @@
                                         <td>{{ $formatCount($office->total_distributions) }}</td>
                                         <td class="cash-text">{{ $formatMoney($office->cash_total) }} ₪</td>
                                         <td>{{ $formatCount($office->in_kind_count) }}</td>
-                                        <td>{{ $office->last_distribution_date ? \Carbon\Carbon::parse($office->last_distribution_date)->format('Y-m-d') : '-' }}</td>
+                                        <td>{{ $office->last_distribution_date ? \Carbon\Carbon::parse($office->last_distribution_date)->format('Y-m-d') : '-' }}
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
@@ -186,7 +310,8 @@
                                     <tr>
                                         <td>{{ $item->name }}</td>
                                         <td>{{ $formatCount($item->total_distributed) }}</td>
-                                        <td>{{ $item->last_distribution_date ? \Carbon\Carbon::parse($item->last_distribution_date)->format('Y-m-d') : '-' }}</td>
+                                        <td>{{ $item->last_distribution_date ? \Carbon\Carbon::parse($item->last_distribution_date)->format('Y-m-d') : '-' }}
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
@@ -243,92 +368,6 @@
 
     <div class="mt-4 card section-card">
         <div class="py-3 card-header">
-            <h6 class="mb-0">حالة المشاريع</h6>
-        </div>
-        <div class="p-0 card-body">
-            <div class="table-responsive">
-                <table class="table mb-0 table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>رقم المشروع</th>
-                            <th>اسم المشروع</th>
-                            <th>المؤسسة</th>
-                            <th>النوع</th>
-                            <th>عدد المساعدات</th>
-                            <th>الإجمالي</th>
-                            <th>المصروف</th>
-                            <th>المتبقي</th>
-                            <th>المستفيدين</th>
-                            <th>تفاصيل</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($projectStats as $project)
-                            <tr>
-                                <td>{{ $project['project_number'] }}</td>
-                                <td>{{ $project['name'] }}</td>
-                                <td>{{ $project['institution_name'] }}</td>
-                                <td>
-                                    @if($project['project_type'] === 'cash')
-                                        <span class="badge bg-success">نقدي</span>
-                                    @else
-                                        <span class="badge bg-info">عيني</span>
-                                        <div class="small text-muted">{{ $project['aid_item_name'] }}</div>
-                                    @endif
-                                </td>
-                                <td>{{ $formatCount($project['aid_distributions_count']) }}</td>
-                                <td>
-                                    @if($project['project_type'] === 'cash')
-                                        {{ $formatMoney($project['total_amount']) }} ₪
-                                    @else
-                                        {{ number_format($project['total_quantity'], 2) }}
-                                    @endif
-                                </td>
-                                <td>
-                                    @if($project['project_type'] === 'cash')
-                                        <span class="text-danger">{{ $formatMoney($project['consumed_amount']) }} ₪</span>
-                                    @else
-                                        <span class="text-danger">{{ number_format($project['consumed_quantity'], 2) }}</span>
-                                    @endif
-                                </td>
-                                <td>
-                                    @if($project['project_type'] === 'cash')
-                                        <span class="text-success">{{ $formatMoney($project['remaining_amount']) }} ₪</span>
-                                    @else
-                                        <span class="text-success">{{ number_format($project['remaining_quantity'], 2) }}</span>
-                                    @endif
-                                </td>
-                                <td>
-                                    <span class="badge bg-primary">{{ $project['beneficiaries_total'] }}</span>
-                                    /
-                                    <span class="badge bg-warning">{{ $project['beneficiaries_consumed'] }}</span>
-                                    /
-                                    <span class="badge bg-success">{{ $project['remaining_beneficiaries'] }}</span>
-                                </td>
-                                <td>
-                                    <button type="button" 
-                                        class="btn btn-sm btn-outline-primary view-project-breakdown-btn" 
-                                        data-project-id="{{ $project['id'] }}">
-                                        <i class="fa-solid fa-eye"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="10" class="py-4 text-center text-muted">لا توجد مشاريع لعرضها</td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <div class="pt-3 bg-white card-footer">
-            {{ $projectStats->appends(request()->except('project_page'))->links() }}
-        </div>
-    </div>
-
-    <div class="mt-4 card section-card">
-        <div class="py-3 card-header">
             <h6 class="mb-0">آخر عمليات الصرف</h6>
         </div>
         <div class="p-0 card-body">
@@ -379,7 +418,8 @@
                                 </td>
                                 <td>
                                     @can('update', App\Models\AidDistribution::class)
-                                        <a href="{{ route('dashboard.aid-distributions.show', $distribution->id) }}" class="btn btn-sm btn-outline-primary">عرض التفاصيل</a>
+                                        <a href="{{ route('dashboard.aid-distributions.show', $distribution->id) }}"
+                                            class="btn btn-sm btn-outline-primary">عرض التفاصيل</a>
                                     @else
                                         <span class="text-muted">-</span>
                                     @endcan
@@ -515,19 +555,34 @@
                 });
             }
 
-            $('.view-project-breakdown-btn').on('click', function() {
+            $('.project-notes-btn').each(function () {
+                const $btn = $(this);
+                const notes = ($btn.data('notes') || '').replace(/\|\|NL\|\|/g, '<br>');
+                if (notes) {
+                    new bootstrap.Popover($btn[0], {
+                        title: '<i class="fa-solid fa-sticky-note me-1"></i> ملاحظات المشروع',
+                        content: notes,
+                        html: true,
+                        placement: 'left',
+                        trigger: 'click',
+                        customClass: 'project-notes-popover'
+                    });
+                }
+            });
+
+            $('.view-project-breakdown-btn').on('click', function () {
                 const projectId = $(this).data('project-id');
-                
+
                 $.ajax({
                     url: `/api/projects/${projectId}/breakdown`,
                     method: 'GET',
-                    success: function(response) {
+                    success: function (response) {
                         $('#breakdown-project-number').text(response.project.project_number);
                         $('#breakdown-project-name').text(response.project.name);
                         $('#breakdown-institution').text(response.project.institution_name);
-                        
-                        const typeText = response.project.project_type === 'cash' 
-                            ? 'نقدي' 
+
+                        const typeText = response.project.project_type === 'cash'
+                            ? 'نقدي'
                             : `عيني (${response.project.aid_item_name})`;
                         $('#breakdown-type').text(typeText);
 
@@ -537,25 +592,25 @@
                         if (response.breakdown.length === 0) {
                             $tbody.append('<tr><td colspan="4" class="text-center text-muted">لا توجد عمليات صرف لهذا المشروع</td></tr>');
                         } else {
-                            response.breakdown.forEach(function(item) {
+                            response.breakdown.forEach(function (item) {
                                 const valueDisplay = response.project.project_type === 'cash'
                                     ? parseFloat(item.total_cash).toFixed(2) + ' ₪'
                                     : parseFloat(item.total_quantity).toFixed(2);
 
                                 $tbody.append(`
-                                    <tr>
-                                        <td>${item.office_name}</td>
-                                        <td>${item.creator_name}</td>
-                                        <td>${item.beneficiaries}</td>
-                                        <td>${valueDisplay}</td>
-                                    </tr>
-                                `);
+                                            <tr>
+                                                <td>${item.office_name}</td>
+                                                <td>${item.creator_name}</td>
+                                                <td>${item.beneficiaries}</td>
+                                                <td>${valueDisplay}</td>
+                                            </tr>
+                                        `);
                             });
                         }
 
                         new bootstrap.Modal(document.getElementById('projectBreakdownModal')).show();
                     },
-                    error: function() {
+                    error: function () {
                         toastr.error('فشل تحميل تفاصيل المشروع');
                     }
                 });

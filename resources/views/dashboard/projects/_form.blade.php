@@ -168,6 +168,16 @@
                             <small class="text-muted">يتم تحديثه تلقائياً عند الصرف</small>
                         </div>
                         <div class="mb-4 col-md-6">
+                            <label class="form-label">رصيد المخزن</label>
+                            <input type="text" class="form-control" value="{{ $project->project_type === 'cash' ? number_format($project->storage_balance_amount, 2) . ' ₪' : number_format($project->storage_balance_quantity, 2) }}" disabled>
+                            <small class="text-muted">الكمية/المبلغ المتبقي من الإجمالي ولم يُوزَّع على المكاتب</small>
+                        </div>
+                        <div class="mb-4 col-md-6">
+                            <label class="form-label">رصيد المكاتب</label>
+                            <input type="text" class="form-control" value="{{ $project->project_type === 'cash' ? number_format($project->offices_balance_amount, 2) . ' ₪' : number_format($project->offices_balance_quantity, 2) }}" disabled>
+                            <small class="text-muted">مجموع الكمية/المبلغ المُوزَّع على المكاتب (حتى لو بدون مساعدات)</small>
+                        </div>
+                        <div class="mb-4 col-md-6">
                             <label class="form-label">التبعية</label>
                             <input type="text" class="form-control" 
                                 value="{{ $project->dependency_type === 'admin' ? 'الإدارة' : ($project->dependencyOffice?->name ?? '-') }}" 

@@ -6,7 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Str;
 class ModelPolicy
 {
-    private const EMPLOYEE_ALLOWED_ABILITIES = [
+    protected const EMPLOYEE_ALLOWED_ABILITIES = [
         'aiddistributions.view',
         'aiddistributions.create',
         'aiddistributions.update',

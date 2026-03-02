@@ -215,6 +215,8 @@
                     </div>
                     <div id="project-stats-display" class="mt-2 small text-muted" style="display: none;">
                     </div>
+                    <div id="project-notes-display" class="mt-2 small" style="display: none;">
+                    </div>
                 </div>
                 <div class="mb-4">
                     <x-form.select
@@ -694,6 +696,7 @@
             $('#institution_id').on('change', function() {
                 const institutionId = $(this).val();
                 currentProjectStats = null;
+                $('#project-notes-display').hide();
                 updateRemainingMessages();
                 const includeProjectId = {{ $isEdit ? 'true' : 'false' }} ? ($('#project_id').val() || {{ $distribution->project_id ?? 'null' }}) : null;
                 loadProjectsByInstitution(institutionId, null, includeProjectId);
@@ -704,6 +707,7 @@
                 currentProjectStats = null;
                 $('#project-full-message').hide();
                 $('#project-stats-display').hide();
+                $('#project-notes-display').hide();
                 updateRemainingMessages();
 
                 if (!projectId) {
@@ -736,6 +740,15 @@
                                 displayText += `${label}: ${parseFloat(stats.remaining_quantity).toFixed(2)} | مستفيدين: ${stats.remaining_beneficiaries}`;
                             }
                             $('#project-stats-display').html(displayText).show();
+                        }
+
+                        if (stats.notes && stats.notes.trim() !== '') {
+                            const escapedNotes = $('<div>').text(stats.notes).html().replace(/\n/g, '<br>');
+                            $('#project-notes-display')
+                                .html(`<div class="d-flex align-items-start gap-2 p-2 rounded bg-light border-start border-warning border-3"><i class="fa-solid fa-sticky-note text-warning mt-1"></i><div><strong class="text-dark small">ملاحظات المشروع:</strong><div class="text-muted small mt-1">${escapedNotes}</div></div></div>`)
+                                .show();
+                        } else {
+                            $('#project-notes-display').hide();
                         }
 
                         updateRemainingMessages();

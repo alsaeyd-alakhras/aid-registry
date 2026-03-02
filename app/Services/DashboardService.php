@@ -7,6 +7,7 @@ use App\Models\AidItem;
 use App\Models\Family;
 use App\Models\Institution;
 use App\Models\Office;
+use App\Models\ProjectOfficeAllocation;
 use App\Models\ProjectStat;
 use Carbon\Carbon;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -284,35 +285,134 @@ class DashboardService
     public function getProjectStats(): LengthAwarePaginator
     {
         $page = request()->integer('project_page', 1);
+        $scope = $this->getOfficeScopeCacheKey();
 
-        $rows = Cache::remember($this->cacheKey('project-stats'), self::CACHE_TTL_SECONDS, function () {
+        $rows = Cache::remember($this->cacheKey("project-stats:{$scope}"), self::CACHE_TTL_SECONDS, function () {
+            $employeeOfficeId = $this->getEmployeeOfficeId();
+
+            if ($employeeOfficeId) {
+                return $this->getProjectStatsForEmployee($employeeOfficeId);
+            }
+
+            $allocationsByProject = ProjectOfficeAllocation::query()
+                ->selectRaw('project_id, SUM(COALESCE(max_amount, 0)) as allocated_amount, SUM(COALESCE(max_quantity, 0)) as allocated_quantity')
+                ->groupBy('project_id')
+                ->get()
+                ->keyBy('project_id');
+
             return ProjectStat::query()
                 ->with(['institution', 'aidItem'])
                 ->orderBy('project_number')
                 ->get()
-                ->map(function ($project) {
-                    return [
-                        'id' => $project->id,
-                        'project_number' => $project->project_number,
-                        'name' => $project->name,
-                        'institution_name' => $project->institution?->name ?? '-',
-                        'project_type' => $project->project_type,
-                        'aid_item_name' => $project->project_type === 'in_kind' ? ($project->aidItem?->name ?? '-') : '-',
-                        'aid_distributions_count' => (int) $project->aid_distributions_count,
-                        'total_amount' => (float) $project->total_amount_ils,
-                        'consumed_amount' => (float) $project->consumed_amount,
-                        'remaining_amount' => (float) $project->remaining_amount,
-                        'total_quantity' => (float) $project->total_quantity,
-                        'consumed_quantity' => (float) $project->consumed_quantity,
-                        'remaining_quantity' => (float) $project->remaining_quantity,
-                        'beneficiaries_total' => (int) $project->beneficiaries_total,
-                        'beneficiaries_consumed' => (int) $project->beneficiaries_consumed,
-                        'remaining_beneficiaries' => (int) $project->remaining_beneficiaries,
-                    ];
+                ->map(function (ProjectStat $project) use ($allocationsByProject) {
+                    return $this->mapProjectStatToRow($project, $allocationsByProject);
                 });
         });
 
         return $this->paginateCollection($rows, self::TABLE_PER_PAGE, $page, 'project_page');
+    }
+
+    private function getProjectStatsForEmployee(int $officeId): Collection
+    {
+        $allocations = ProjectOfficeAllocation::query()
+            ->where('office_id', $officeId)
+            ->with(['project.institution', 'project.aidItem'])
+            ->join('projects', 'projects.id', '=', 'project_office_allocations.project_id')
+            ->orderBy('projects.project_number')
+            ->select('project_office_allocations.*')
+            ->get();
+
+        $consumed = AidDistribution::query()
+            ->where('office_id', $officeId)
+            ->where('status', 'active')
+            ->whereNotNull('project_id')
+            ->selectRaw('project_id')
+            ->selectRaw("SUM(CASE WHEN aid_mode = 'cash' THEN COALESCE(cash_amount, 0) ELSE 0 END) as consumed_amount")
+            ->selectRaw("SUM(CASE WHEN aid_mode = 'in_kind' THEN COALESCE(quantity, 0) ELSE 0 END) as consumed_quantity")
+            ->selectRaw('COUNT(DISTINCT family_id) as beneficiaries_consumed')
+            ->selectRaw('COUNT(*) as aid_distributions_count')
+            ->groupBy('project_id')
+            ->get()
+            ->keyBy('project_id');
+
+        return $allocations->map(function ($allocation) use ($consumed) {
+            $project = $allocation->project;
+            if (!$project) {
+                return null;
+            }
+
+            $c = $consumed->get($project->id);
+            $consumedAmount = (float) ($c->consumed_amount ?? 0);
+            $consumedQuantity = (float) ($c->consumed_quantity ?? 0);
+            $beneficiariesConsumed = (int) ($c->beneficiaries_consumed ?? 0);
+            $aidDistributionsCount = (int) ($c->aid_distributions_count ?? 0);
+
+            $totalAmount = (float) ($allocation->max_amount ?? 0);
+            $totalQuantity = (float) ($allocation->max_quantity ?? 0);
+            $maxBeneficiaries = (int) ($allocation->max_beneficiaries ?? 0);
+
+            return [
+                'id' => $project->id,
+                'project_number' => $project->project_number,
+                'name' => $project->name,
+                'notes' => $project->notes ?? null,
+                'institution_name' => $project->institution?->name ?? '-',
+                'project_type' => $project->project_type,
+                'aid_item_name' => $project->project_type === 'in_kind' ? ($project->aidItem?->name ?? '-') : '-',
+                'aid_distributions_count' => $aidDistributionsCount,
+                'total_amount' => $totalAmount,
+                'consumed_amount' => $consumedAmount,
+                'remaining_amount' => $totalAmount - $consumedAmount,
+                'total_quantity' => $totalQuantity,
+                'consumed_quantity' => $consumedQuantity,
+                'remaining_quantity' => $totalQuantity - $consumedQuantity,
+                'beneficiaries_total' => $maxBeneficiaries,
+                'beneficiaries_consumed' => $beneficiariesConsumed,
+                'remaining_beneficiaries' => $maxBeneficiaries - $beneficiariesConsumed,
+            ];
+        })->filter()->values();
+    }
+
+    private function mapProjectStatToRow(ProjectStat $project, ?Collection $allocationsByProject = null): array
+    {
+        $row = [
+            'id' => $project->id,
+            'project_number' => $project->project_number,
+            'name' => $project->name,
+            'notes' => $project->notes ?? null,
+            'institution_name' => $project->institution?->name ?? '-',
+            'project_type' => $project->project_type,
+            'aid_item_name' => $project->project_type === 'in_kind' ? ($project->aidItem?->name ?? '-') : '-',
+            'aid_distributions_count' => (int) $project->aid_distributions_count,
+            'total_amount' => (float) $project->total_amount_ils,
+            'consumed_amount' => (float) $project->consumed_amount,
+            'remaining_amount' => (float) $project->remaining_amount,
+            'total_quantity' => (float) $project->total_quantity,
+            'consumed_quantity' => (float) $project->consumed_quantity,
+            'remaining_quantity' => (float) $project->remaining_quantity,
+            'beneficiaries_total' => (int) $project->beneficiaries_total,
+            'beneficiaries_consumed' => (int) $project->beneficiaries_consumed,
+            'remaining_beneficiaries' => (int) $project->remaining_beneficiaries,
+        ];
+
+        if ($allocationsByProject !== null) {
+            $alloc = $allocationsByProject->get($project->id);
+            if ($alloc) {
+                $allocatedAmount = (float) $alloc->allocated_amount;
+                $allocatedQuantity = (float) $alloc->allocated_quantity;
+                $row['storage_balance_amount'] = max(0, (float) $project->total_amount_ils - $allocatedAmount);
+                $row['storage_balance_quantity'] = max(0, (float) $project->total_quantity - $allocatedQuantity);
+                $row['offices_balance_amount'] = $allocatedAmount;
+                $row['offices_balance_quantity'] = $allocatedQuantity;
+            } else {
+                $row['storage_balance_amount'] = (float) $project->remaining_amount;
+                $row['storage_balance_quantity'] = (float) $project->remaining_quantity;
+                $row['offices_balance_amount'] = (float) $project->consumed_amount;
+                $row['offices_balance_quantity'] = (float) $project->consumed_quantity;
+            }
+        }
+
+        return $row;
     }
 
     public function clearDashboardCache(): void

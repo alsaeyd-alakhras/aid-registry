@@ -11,6 +11,7 @@ use App\Services\DashboardService;
 use App\Services\ProjectConsumptionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
 
 
@@ -26,6 +27,7 @@ class HomeController extends Controller
         $topAidItems = $dashboardService->getTopAidItems();
         $recentDistributions = $dashboardService->getRecentDistributions();
         $projectStats = $dashboardService->getProjectStats();
+        $showStorageOfficesBalance = Auth::user()?->user_type !== 'employee';
 
         return view('dashboard.index', compact(
             'year',
@@ -35,7 +37,8 @@ class HomeController extends Controller
             'institutionStats',
             'topAidItems',
             'recentDistributions',
-            'projectStats'
+            'projectStats',
+            'showStorageOfficesBalance'
         ));
     }
 

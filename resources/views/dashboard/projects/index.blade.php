@@ -50,6 +50,8 @@
             'total_display' => 'الإجمالي',
             'consumed_display' => 'المصروف',
             'remaining_display' => 'المتبقي',
+            'storage_balance_display' => 'رصيد المخزن',
+            'offices_balance_display' => 'رصيد المكاتب',
             'beneficiaries_total' => 'عدد المستفيدين',
             'beneficiaries_consumed' => 'المستفيدين الحاصلين',
             'beneficiaries_remaining' => 'المتبقي',
@@ -205,6 +207,8 @@
                 'total_display',
                 'consumed_display',
                 'remaining_display',
+                'storage_balance_display',
+                'offices_balance_display',
                 'beneficiaries_total',
                 'beneficiaries_consumed',
                 'beneficiaries_remaining',
@@ -299,6 +303,18 @@
                     class: 'text-center'
                 },
                 {
+                    data: 'storage_balance_display',
+                    name: 'storage_balance_display',
+                    orderable: false,
+                    class: 'text-center'
+                },
+                {
+                    data: 'offices_balance_display',
+                    name: 'offices_balance_display',
+                    orderable: false,
+                    class: 'text-center'
+                },
+                {
                     data: 'beneficiaries_total',
                     name: 'beneficiaries_total',
                     orderable: false,
@@ -362,8 +378,8 @@
             ];
 
             const dataForm = {};
-            const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-            const columnNamesCopy = ['project_number', 'name', 'institution_name', 'project_type', 'aid_item_name', 'total_display', 'consumed_display', 'remaining_display', 'beneficiaries_total', 'beneficiaries_consumed', 'beneficiaries_remaining', 'dependency_display', 'creator_name', 'status_display'];
+            const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+            const columnNamesCopy = ['project_number', 'name', 'institution_name', 'project_type', 'aid_item_name', 'total_display', 'consumed_display', 'remaining_display', 'storage_balance_display', 'offices_balance_display', 'beneficiaries_total', 'beneficiaries_consumed', 'beneficiaries_remaining', 'dependency_display', 'creator_name', 'status_display'];
         </script>
         <script type="text/javascript" src="{{ asset('js/datatable.js') }}"></script>
 

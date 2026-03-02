@@ -99,4 +99,50 @@ class Project extends Model
     {
         return (int) ($this->beneficiaries_total - $this->beneficiaries_consumed);
     }
+
+    /** رصيد المكاتب: مجموع max_amount من التوزيعات على المكاتب. عند عدم وجود توزيعات: consumed */
+    public function getOfficesBalanceAmountAttribute(): float
+    {
+        $allocations = $this->relationLoaded('officeAllocations') ? $this->officeAllocations : $this->officeAllocations()->get();
+        if ($allocations->isEmpty()) {
+            return (float) $this->consumed_amount;
+        }
+
+        return (float) $allocations->sum('max_amount');
+    }
+
+    /** رصيد المكاتب: مجموع max_quantity من التوزيعات على المكاتب. عند عدم وجود توزيعات: consumed */
+    public function getOfficesBalanceQuantityAttribute(): float
+    {
+        $allocations = $this->relationLoaded('officeAllocations') ? $this->officeAllocations : $this->officeAllocations()->get();
+        if ($allocations->isEmpty()) {
+            return (float) $this->consumed_quantity;
+        }
+
+        return (float) $allocations->sum('max_quantity');
+    }
+
+    /** رصيد المخزن: الإجمالي - رصيد المكاتب. عند عدم وجود توزيعات: remaining */
+    public function getStorageBalanceAmountAttribute(): float
+    {
+        $allocations = $this->relationLoaded('officeAllocations') ? $this->officeAllocations : $this->officeAllocations()->get();
+        if ($allocations->isEmpty()) {
+            return (float) $this->remaining_amount;
+        }
+        $officesBalance = (float) $allocations->sum('max_amount');
+
+        return max(0, (float) $this->total_amount_ils - $officesBalance);
+    }
+
+    /** رصيد المخزن: الإجمالي - رصيد المكاتب. عند عدم وجود توزيعات: remaining */
+    public function getStorageBalanceQuantityAttribute(): float
+    {
+        $allocations = $this->relationLoaded('officeAllocations') ? $this->officeAllocations : $this->officeAllocations()->get();
+        if ($allocations->isEmpty()) {
+            return (float) $this->remaining_quantity;
+        }
+        $officesBalance = (float) $allocations->sum('max_quantity');
+
+        return max(0, (float) $this->total_quantity - $officesBalance);
+    }
 }
