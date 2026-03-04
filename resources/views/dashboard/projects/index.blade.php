@@ -132,6 +132,39 @@
         </div>
     </div>
 
+    <div class="modal fade" id="uploadReceiptModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">رفع كشف الإستلام</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadReceiptForm">
+                        <input type="hidden" id="upload-receipt-project-id" name="project_id">
+                        <input type="hidden" id="upload-receipt-allocation-id" name="allocation_id">
+                        <div class="mb-3">
+                            <label class="form-label">الملف (PDF, Excel, صور)</label>
+                            <input type="file" class="form-control" id="receipt_file" name="receipt_file"
+                                accept=".pdf,.xlsx,.xls,.jpg,.jpeg,.png,.gif,.webp">
+                        </div>
+                        <div id="receipt-view-area" class="mb-2" style="display: none;">
+                            <a href="#" id="receipt-view-link" target="_blank" class="btn btn-sm btn-outline-primary">
+                                <i class="fa-solid fa-eye me-1"></i> عرض الملف المرفوع
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="button" class="btn btn-primary" id="uploadReceiptBtn">
+                        <i class="fa-solid fa-upload me-1"></i> رفع
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade delete-modal" id="deleteConfirmModal" tabindex="-1"
         aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -368,8 +401,23 @@
                             </button>
                         `;
                         }
+                        let linkupload = '';
+                        if (row.allocation_id) {
+                            const uploadBtnClass = row.has_receipt ? 'action-btn btn-upload-receipt upload_receipt_row btn-success text-white' : 'action-btn btn-upload-receipt upload_receipt_row';
+                            const uploadBtnTitle = row.has_receipt ? 'تم رفع كشف الإستلام' : 'رفع كشف الإستلام';
+                            linkupload = `
+                            <button class="${uploadBtnClass}"
+                                    data-project-id="${row.id}"
+                                    data-allocation-id="${row.allocation_id}"
+                                    data-has-receipt="${row.has_receipt ? '1' : '0'}"
+                                    title="${uploadBtnTitle}">
+                                <i class="fas fa-file-upload"></i>
+                            </button>
+                        `;
+                        }
                         return `
-                        <div class="d-flex align-items-center justify-content-evenly">
+                        <div class="d-flex align-items-center justify-content-evenly gap-1">
+                            ${linkupload}
                             ${linkdelete}
                         </div>
                     `;
@@ -380,8 +428,56 @@
             const dataForm = {};
             const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
             const columnNamesCopy = ['project_number', 'name', 'institution_name', 'project_type', 'aid_item_name', 'total_display', 'consumed_display', 'remaining_display', 'storage_balance_display', 'offices_balance_display', 'beneficiaries_total', 'beneficiaries_consumed', 'beneficiaries_remaining', 'dependency_display', 'creator_name', 'status_display'];
+            const uploadReceiptUrlTemplate = "{{ route('dashboard.projects.allocations.upload-receipt', ['projectId' => '__PID__', 'allocationId' => '__AID__']) }}";
         </script>
         <script type="text/javascript" src="{{ asset('js/datatable.js') }}"></script>
+        <script>
+            $(document).on('click', '.upload_receipt_row', function () {
+                const projectId = $(this).data('project-id');
+                const allocationId = $(this).data('allocation-id');
+                const hasReceipt = $(this).data('has-receipt') == 1;
+                $('#upload-receipt-project-id').val(projectId);
+                $('#upload-receipt-allocation-id').val(allocationId);
+                $('#receipt_file').val('');
+                const receiptUrl = "{{ url('/') }}/projects/" + projectId + "/allocations/" + allocationId + "/receipt";
+                if (hasReceipt) {
+                    $('#receipt-view-link').attr('href', receiptUrl);
+                    $('#receipt-view-area').show();
+                } else {
+                    $('#receipt-view-area').hide();
+                }
+                new bootstrap.Modal(document.getElementById('uploadReceiptModal')).show();
+            });
+            $('#uploadReceiptBtn').on('click', function () {
+                const projectId = $('#upload-receipt-project-id').val();
+                const allocationId = $('#upload-receipt-allocation-id').val();
+                const fileInput = document.getElementById('receipt_file');
+                if (!fileInput.files.length) {
+                    toastr.warning('يرجى اختيار ملف للرفع');
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('receipt_file', fileInput.files[0]);
+                formData.append('_token', '{{ csrf_token() }}');
+                const url = uploadReceiptUrlTemplate.replace('__PID__', projectId).replace('__AID__', allocationId);
+                $.ajax({
+                    url: url,
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function () {
+                        bootstrap.Modal.getInstance(document.getElementById('uploadReceiptModal')).hide();
+                        toastr.success('تم رفع الملف بنجاح');
+                        $('#' + tableId).DataTable().ajax.reload();
+                    },
+                    error: function (xhr) {
+                        const msg = xhr.responseJSON?.message || (xhr.responseJSON?.errors?.receipt_file && xhr.responseJSON.errors.receipt_file[0]) || 'فشل رفع الملف';
+                        toastr.error(msg);
+                    }
+                });
+            });
+        </script>
 
     @endpush
 </x-front-layout>

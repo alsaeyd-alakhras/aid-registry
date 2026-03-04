@@ -73,12 +73,15 @@ Route::group([
 
     // API Routes for AJAX requests
     Route::prefix('api')->group(function () {
-        Route::get('families/search-by-national-id/{id}', [AidDistributionController::class, 'searchByNationalId'])->name('api.families.search');
-        Route::get('aid-distributions/{id}', [AidDistributionController::class, 'showAidDistribution'])->name('api.aid-distributions.show');
-        Route::get('families/{familyId}/all-aids', [AidDistributionController::class, 'getAllAids'])->name('api.families.all-aids');
-        Route::get('institutions/{institutionId}/projects', [ProjectController::class, 'getProjectsByInstitution'])->name('api.institutions.projects');
-        Route::get('projects/{projectId}/stats', [ProjectController::class, 'getProjectStats'])->name('api.projects.stats');
-        Route::get('projects/{projectId}/breakdown', [ProjectController::class, 'getProjectBreakdown'])->name('api.projects.breakdown');
+        Route::get('families/search-by-national-id/{id}', [AidDistributionController::class, 'searchByNationalId'])->name('families.search');
+        Route::get('aid-distributions/{id}', [AidDistributionController::class, 'showAidDistribution'])->name('aid-distributions.show');
+        Route::get('families/{familyId}/all-aids', [AidDistributionController::class, 'getAllAids'])->name('families.all-aids');
+        Route::get('institutions/{institutionId}/projects', [ProjectController::class, 'getProjectsByInstitution'])->name('institutions.projects');
+        Route::get('projects/{projectId}/stats', [ProjectController::class, 'getProjectStats'])->name('projects.stats');
+        Route::get('projects/{projectId}/breakdown', [ProjectController::class, 'getProjectBreakdown'])->name('projects.breakdown');
     });
+
+    Route::post('api/projects/{projectId}/allocations/{allocationId}/upload-receipt', [ProjectController::class, 'uploadReceipt'])->name('projects.allocations.upload-receipt');
+    Route::get('projects/{project}/allocations/{allocation}/receipt', [ProjectController::class, 'downloadReceipt'])->name('projects.allocations.receipt');
     /* ********************************************************** */
 });

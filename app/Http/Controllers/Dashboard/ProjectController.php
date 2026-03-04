@@ -14,6 +14,7 @@ use App\Services\ProjectNumberService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
 
@@ -32,7 +33,14 @@ class ProjectController extends Controller
                 $this->applyColumnFilters($projects, $request->column_filters);
             }
 
-            $rows = $projects->get()->map(function (Project $project) {
+            $user = Auth::user();
+            $employeeOfficeId = ($user && $user->user_type === 'employee') ? (int) $user->office_id : null;
+
+            $rows = $projects->get()->map(function (Project $project) use ($employeeOfficeId) {
+                $allocation = $employeeOfficeId
+                    ? $project->officeAllocations->firstWhere('office_id', $employeeOfficeId)
+                    : null;
+
                 return [
                     'id' => $project->id,
                     'project_number' => $project->project_number,
@@ -66,6 +74,8 @@ class ProjectController extends Controller
                     'status_display' => ($project->status ?? 'active') === 'active' ? 'فعال' : 'مغلق',
                     'can_edit' => Auth::user()->can('update', $project),
                     'can_delete' => Auth::user()->can('delete', $project),
+                    'allocation_id' => $allocation?->id,
+                    'has_receipt' => $allocation?->receipt_file_path ? true : false,
                 ];
             })->values();
 
@@ -132,6 +142,7 @@ class ProjectController extends Controller
                     'project_type' => $validated['project_type'],
                     'aid_item_id' => $validated['project_type'] === 'in_kind' ? $validated['aid_item_id'] : null,
                     'total_quantity' => $validated['project_type'] === 'in_kind' ? $validated['total_quantity'] : 0,
+                    'unit_value_ils' => $validated['project_type'] === 'in_kind' ? ($validated['unit_value_ils'] ?? null) : null,
                     'total_amount_ils' => $validated['project_type'] === 'cash' ? $validated['total_amount_ils'] : 0,
                     'estimated_amount' => $validated['estimated_amount'] ?? null,
                     'beneficiaries_total' => $validated['beneficiaries_total'],
@@ -203,6 +214,7 @@ class ProjectController extends Controller
                     'project_type' => $validated['project_type'],
                     'aid_item_id' => $validated['project_type'] === 'in_kind' ? $validated['aid_item_id'] : null,
                     'total_quantity' => $validated['project_type'] === 'in_kind' ? $validated['total_quantity'] : 0,
+                    'unit_value_ils' => $validated['project_type'] === 'in_kind' ? ($validated['unit_value_ils'] ?? null) : null,
                     'total_amount_ils' => $validated['project_type'] === 'cash' ? $validated['total_amount_ils'] : 0,
                     'estimated_amount' => $validated['estimated_amount'] ?? null,
                     'beneficiaries_total' => $validated['beneficiaries_total'],
@@ -219,7 +231,6 @@ class ProjectController extends Controller
                 }
                 $project->update($updateData);
 
-                $project->officeAllocations()->delete();
                 $this->saveAllocations($project, $request->input('allocations', []));
 
                 DB::commit();
@@ -303,6 +314,7 @@ class ProjectController extends Controller
             'project_type' => 'required|in:cash,in_kind',
             'aid_item_id' => 'nullable|exists:aid_items,id|required_if:project_type,in_kind',
             'total_quantity' => 'nullable|numeric|min:0.01|required_if:project_type,in_kind',
+            'unit_value_ils' => 'nullable|numeric|min:0|required_if:project_type,in_kind',
             'total_amount_ils' => 'nullable|numeric|min:0.01|required_if:project_type,cash',
             'estimated_amount' => 'nullable|numeric|min:0',
             'beneficiaries_total' => 'required|integer|min:1',
@@ -317,6 +329,7 @@ class ProjectController extends Controller
         ], [
             'project_number.required' => 'رقم المشروع مطلوب',
             'project_number.unique' => 'رقم المشروع موجود مسبقاً، يرجى اختيار رقم آخر',
+            'unit_value_ils.required_if' => 'قيمة الوحدة مطلوبة للمشاريع العينية.',
         ]);
 
         if ($validated['project_type'] === 'in_kind' && empty($validated['aid_item_id'])) {
@@ -611,6 +624,10 @@ class ProjectController extends Controller
             $cons = $consumptionByOffice->get($oid);
             $office = $alloc?->office ?? Office::find($oid);
 
+            $receiptUrl = $alloc->receipt_file_path
+                ? route('dashboard.projects.allocations.receipt', [$project->id, $alloc->id])
+                : null;
+
             $breakdown->push([
                 'office_id' => $oid,
                 'office_name' => $office?->name ?? '-',
@@ -620,6 +637,9 @@ class ProjectController extends Controller
                 'aid_count' => (int) ($cons->aid_count ?? 0),
                 'total_cash' => (float) ($cons->total_cash ?? 0),
                 'total_quantity' => (float) ($cons->total_quantity ?? 0),
+                'received' => (bool) ($alloc->received ?? false),
+                'receipt_file_path' => $alloc->receipt_file_path,
+                'receipt_url' => $receiptUrl,
             ]);
         }
 
@@ -637,8 +657,76 @@ class ProjectController extends Controller
         ]);
     }
 
+    public function uploadReceipt(Request $request, int $projectId, int $allocationId)
+    {
+        $user = Auth::user();
+        if (!$user || $user->user_type !== 'employee') {
+            abort(403, 'فقط الموظفون يمكنهم رفع كشف الإستلام.');
+        }
+
+        $allocation = ProjectOfficeAllocation::query()
+            ->where('project_id', $projectId)
+            ->where('id', $allocationId)
+            ->where('office_id', $user->office_id)
+            ->firstOrFail();
+
+        $request->validate([
+            'receipt_file' => 'required|file|mimes:pdf,xlsx,xls,jpg,jpeg,png,gif,webp',
+        ], [
+            'receipt_file.required' => 'يرجى اختيار ملف للرفع.',
+            'receipt_file.mimes' => 'صيغ الملفات المسموحة: PDF, Excel, صور (jpg, png, gif, webp).',
+        ]);
+
+        if ($allocation->receipt_file_path) {
+            Storage::disk('public')->delete($allocation->receipt_file_path);
+        }
+
+        $file = $request->file('receipt_file');
+        $ext = $file->getClientOriginalExtension();
+        $path = $file->storeAs(
+            "project-receipts/{$projectId}",
+            "{$allocation->office_id}_" . uniqid() . ".{$ext}",
+            'public'
+        );
+
+        $allocation->update(['receipt_file_path' => $path]);
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'تم رفع الملف بنجاح']);
+        }
+
+        return redirect()->back()->with('success', 'تم رفع الملف بنجاح');
+    }
+
+    public function downloadReceipt(Project $project, ProjectOfficeAllocation $allocation)
+    {
+        $this->authorize('view', Project::class);
+
+        if ($allocation->project_id !== $project->id) {
+            abort(404);
+        }
+
+        if (!$allocation->receipt_file_path || !Storage::disk('public')->exists($allocation->receipt_file_path)) {
+            abort(404, 'الملف غير موجود.');
+        }
+
+        $user = Auth::user();
+        if ($user && $user->user_type === 'employee') {
+            if ($allocation->office_id != $user->office_id) {
+                abort(403, 'غير مصرح بعرض هذا الملف.');
+            }
+        }
+
+        return Storage::disk('public')->download(
+            $allocation->receipt_file_path,
+            'كشف_استلام_' . $allocation->office_id . '.' . pathinfo($allocation->receipt_file_path, PATHINFO_EXTENSION)
+        );
+    }
+
     private function saveAllocations(Project $project, array $allocations): void
     {
+        $enabledOfficeIds = [];
+
         foreach ($allocations as $officeId => $data) {
             if (!isset($data['enabled']) || $data['enabled'] != 1) {
                 continue;
@@ -647,15 +735,28 @@ class ProjectController extends Controller
             $maxBeneficiaries = (int) ($data['max_beneficiaries'] ?? 0);
             $maxAmount = isset($data['max_amount']) && $data['max_amount'] !== '' ? (float) $data['max_amount'] : null;
             $maxQuantity = isset($data['max_quantity']) && $data['max_quantity'] !== '' ? (float) $data['max_quantity'] : null;
+            $received = isset($data['received']) && $data['received'] == 1;
 
             if ($maxBeneficiaries > 0 || $maxAmount > 0 || $maxQuantity > 0) {
-                $project->officeAllocations()->create([
-                    'office_id' => $officeId,
-                    'max_beneficiaries' => $maxBeneficiaries,
-                    'max_amount' => $maxAmount,
-                    'max_quantity' => $maxQuantity,
-                ]);
+                $project->officeAllocations()->updateOrCreate(
+                    ['project_id' => $project->id, 'office_id' => $officeId],
+                    [
+                        'max_beneficiaries' => $maxBeneficiaries,
+                        'max_amount' => $maxAmount,
+                        'max_quantity' => $maxQuantity,
+                        'received' => $received,
+                    ]
+                );
+                $enabledOfficeIds[] = $officeId;
             }
         }
+
+        $toDelete = $project->officeAllocations()->whereNotIn('office_id', $enabledOfficeIds)->get();
+        foreach ($toDelete as $alloc) {
+            if ($alloc->receipt_file_path) {
+                Storage::disk('public')->delete($alloc->receipt_file_path);
+            }
+        }
+        $project->officeAllocations()->whereNotIn('office_id', $enabledOfficeIds)->delete();
     }
 }

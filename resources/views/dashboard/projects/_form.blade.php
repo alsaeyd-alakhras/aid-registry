@@ -202,6 +202,18 @@
             </div>
             <div class="card-body">
                 <div class="row">
+                    <div class="mb-4 col-md-6" id="unit-value-wrapper">
+                        <x-form.input
+                            id="unit_value_ils"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            name="unit_value_ils"
+                            label="قيمة الوحدة بالشيكل"
+                            :value="$project->unit_value_ils"
+                        />
+                        <small class="text-muted">للمشاريع العينية فقط</small>
+                    </div>
                     <div class="mb-4 col-md-6">
                         <x-form.input
                             name="department"
@@ -317,6 +329,34 @@
                                         >
                                     </div>
                                 </div>
+                                @if($isEdit && !$isEmployee)
+                                    <div class="row mt-2">
+                                        <div class="col-md-6 mb-2">
+                                            <div class="form-check">
+                                                <input 
+                                                    class="form-check-input" 
+                                                    type="checkbox" 
+                                                    name="allocations[{{ $office->id }}][received]"
+                                                    id="office_{{ $office->id }}_received"
+                                                    value="1"
+                                                    @checked($allocation?->received ?? false)
+                                                >
+                                                <label class="form-check-label small" for="office_{{ $office->id }}_received">
+                                                    استلام
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6 mb-2">
+                                            @if($allocation?->receipt_file_path)
+                                                <a href="{{ route('dashboard.projects.allocations.receipt', [$project->id, $allocation->id]) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                    <i class="fa-solid fa-file-pdf me-1"></i> عرض كشف الإستلام
+                                                </a>
+                                            @else
+                                                <span class="text-muted small">المكتب مش مسلم نهائي الملف</span>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                     @endforeach
@@ -341,6 +381,12 @@
                         <div>{{ $project->creator?->name ?? '-' }}</div>
                     </div>
                     <hr>
+                    @if($project->project_type === 'in_kind' && $project->unit_value_ils)
+                        <div class="mb-3">
+                            <strong>قيمة الوحدة:</strong>
+                            <div>{{ number_format($project->unit_value_ils, 2) }} ₪</div>
+                        </div>
+                    @endif
                     <div class="mb-3">
                         <strong>المتبقي:</strong>
                         <div class="text-success">
@@ -405,6 +451,7 @@
                 $('#aid-item-wrapper').toggle(type === 'in_kind');
                 $('#quantity-wrapper').toggle(type === 'in_kind');
                 $('#estimated-amount-wrapper').toggle(type === 'in_kind');
+                $('#unit-value-wrapper').toggle(type === 'in_kind');
 
                 $('#total_amount_ils')
                     .prop('required', type === 'cash')
@@ -418,9 +465,14 @@
                     .prop('required', type === 'in_kind')
                     .prop('disabled', type !== 'in_kind');
 
+                $('#unit_value_ils')
+                    .prop('required', type === 'in_kind')
+                    .prop('disabled', type !== 'in_kind');
+
                 if (type === 'cash') {
                     $('#aid_item_id').val('').trigger('change');
                     $('#total_quantity').val('');
+                    $('#unit_value_ils').val('');
                     $('input[name="estimated_amount"]').val('');
                 } else if (type === 'in_kind') {
                     $('#total_amount_ils').val('');

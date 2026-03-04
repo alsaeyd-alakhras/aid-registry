@@ -13,12 +13,15 @@ class ProjectOfficeAllocation extends Model
         'max_beneficiaries',
         'max_amount',
         'max_quantity',
+        'received',
+        'receipt_file_path',
     ];
 
     protected $casts = [
         'max_beneficiaries' => 'integer',
         'max_amount' => 'decimal:2',
         'max_quantity' => 'decimal:2',
+        'received' => 'boolean',
     ];
 
     public function project(): BelongsTo

@@ -300,12 +300,25 @@ class DashboardService
                 ->get()
                 ->keyBy('project_id');
 
+            $receiptsByProject = ProjectOfficeAllocation::query()
+                ->whereNotNull('receipt_file_path')
+                ->selectRaw('project_id, COUNT(*) as receipts_count')
+                ->groupBy('project_id')
+                ->get()
+                ->keyBy('project_id');
+
+            $totalOfficesByProject = ProjectOfficeAllocation::query()
+                ->selectRaw('project_id, COUNT(*) as total_offices')
+                ->groupBy('project_id')
+                ->get()
+                ->keyBy('project_id');
+
             return ProjectStat::query()
                 ->with(['institution', 'aidItem'])
                 ->orderBy('project_number')
                 ->get()
-                ->map(function (ProjectStat $project) use ($allocationsByProject) {
-                    return $this->mapProjectStatToRow($project, $allocationsByProject);
+                ->map(function (ProjectStat $project) use ($allocationsByProject, $receiptsByProject, $totalOfficesByProject) {
+                    return $this->mapProjectStatToRow($project, $allocationsByProject, $receiptsByProject, $totalOfficesByProject);
                 });
         });
 
@@ -369,11 +382,13 @@ class DashboardService
                 'beneficiaries_total' => $maxBeneficiaries,
                 'beneficiaries_consumed' => $beneficiariesConsumed,
                 'remaining_beneficiaries' => $maxBeneficiaries - $beneficiariesConsumed,
+                'allocation_id' => $allocation->id,
+                'has_receipt' => !empty($allocation->receipt_file_path),
             ];
         })->filter()->values();
     }
 
-    private function mapProjectStatToRow(ProjectStat $project, ?Collection $allocationsByProject = null): array
+    private function mapProjectStatToRow(ProjectStat $project, ?Collection $allocationsByProject = null, ?Collection $receiptsByProject = null, ?Collection $totalOfficesByProject = null): array
     {
         $row = [
             'id' => $project->id,
@@ -394,6 +409,14 @@ class DashboardService
             'beneficiaries_consumed' => (int) $project->beneficiaries_consumed,
             'remaining_beneficiaries' => (int) $project->remaining_beneficiaries,
         ];
+
+        if ($receiptsByProject !== null && $totalOfficesByProject !== null) {
+            $receiptsCount = (int) ($receiptsByProject->get($project->id)?->receipts_count ?? 0);
+            $totalOffices = (int) ($totalOfficesByProject->get($project->id)?->total_offices ?? 0);
+            $row['receipts_uploaded_count'] = $receiptsCount;
+            $row['total_offices_count'] = $totalOffices;
+            $row['receipts_display'] = $totalOffices > 0 ? "{$receiptsCount}/{$totalOffices}" : '-';
+        }
 
         if ($allocationsByProject !== null) {
             $alloc = $allocationsByProject->get($project->id);

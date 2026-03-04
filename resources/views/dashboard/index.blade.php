@@ -136,13 +136,13 @@
                             <th>اسم المشروع</th>
                             <th>المؤسسة</th>
                             <th>النوع</th>
-                            <th>عدد المساعدات</th>
                             <th>الإجمالي</th>
                             <th>المصروف</th>
                             <th>المتبقي</th>
                             @if($showStorageOfficesBalance ?? false)
                                 <th>رصيد المخزن</th>
                                 <th>رصيد المكاتب</th>
+                                <th>رفع</th>
                             @endif
                             <th>المستفيدين</th>
                             <th>تفاصيل</th>
@@ -170,7 +170,6 @@
                                         <div class="small text-muted">{{ $project['aid_item_name'] }}</div>
                                     @endif
                                 </td>
-                                <td>{{ $formatCount($project['aid_distributions_count']) }}</td>
                                 <td>
                                     @if($project['project_type'] === 'cash')
                                         {{ $formatMoney($project['total_amount']) }} ₪
@@ -210,6 +209,7 @@
                                             {{ number_format($project['offices_balance_quantity'] ?? 0, 2) }}
                                         @endif
                                     </td>
+                                    <td>{{ $project['receipts_display'] ?? '-' }}</td>
                                 @endif
                                 <td>
                                     <span class="badge bg-primary">{{ $project['beneficiaries_total'] }}</span>
@@ -231,12 +231,21 @@
                                                 <i class="fa-solid fa-sticky-note"></i>
                                             </button>
                                         @endif
+                                        @if(isset($project['allocation_id']) && Auth::user()?->user_type === 'employee')
+                                            <button type="button" class="btn btn-sm upload-receipt-btn {{ ($project['has_receipt'] ?? false) ? 'btn-success text-white' : 'btn-outline-secondary' }}"
+                                                data-project-id="{{ $project['id'] }}"
+                                                data-allocation-id="{{ $project['allocation_id'] }}"
+                                                data-has-receipt="{{ $project['has_receipt'] ? '1' : '0' }}"
+                                                title="{{ ($project['has_receipt'] ?? false) ? 'تم رفع كشف الإستلام' : 'رفع كشف الإستلام' }}">
+                                                <i class="fa-solid fa-file-upload"></i>
+                                            </button>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ ($showStorageOfficesBalance ?? false) ? 12 : 10 }}" class="py-4 text-center text-muted">لا توجد مشاريع لعرضها</td>
+                                <td colspan="{{ ($showStorageOfficesBalance ?? false) ? 13 : 10 }}" class="py-4 text-center text-muted">لا توجد مشاريع لعرضها</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -486,6 +495,7 @@
                                     <th>عدد المستفيدين</th>
                                     <th>عدد المساعدات</th>
                                     <th>المبلغ/الكمية</th>
+                                    <th>كشف الإستلام</th>
                                 </tr>
                             </thead>
                             <tbody id="breakdown-table-body">
@@ -495,6 +505,40 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إغلاق</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="uploadReceiptModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">رفع كشف الإستلام</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadReceiptForm">
+                        @csrf
+                        <input type="hidden" id="upload-receipt-project-id" name="project_id">
+                        <input type="hidden" id="upload-receipt-allocation-id" name="allocation_id">
+                        <div class="mb-3">
+                            <label class="form-label">الملف (PDF, Excel, صور)</label>
+                            <input type="file" class="form-control" id="receipt_file" name="receipt_file"
+                                accept=".pdf,.xlsx,.xls,.jpg,.jpeg,.png,.gif,.webp">
+                        </div>
+                        <div id="receipt-view-area" class="mb-2" style="display: none;">
+                            <a href="#" id="receipt-view-link" target="_blank" class="btn btn-sm btn-outline-primary">
+                                <i class="fa-solid fa-eye me-1"></i> عرض الملف المرفوع
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="button" class="btn btn-primary" id="uploadReceiptBtn">
+                        <i class="fa-solid fa-upload me-1"></i> رفع
+                    </button>
                 </div>
             </div>
         </div>
@@ -587,6 +631,55 @@
 
             const aidDistributionsUrl = @json(route('dashboard.aid-distributions.index'));
 
+            const uploadReceiptUrlTemplate = @json(route('dashboard.projects.allocations.upload-receipt', ['projectId' => '__PID__', 'allocationId' => '__AID__']));
+
+            $('.upload-receipt-btn').on('click', function () {
+                const projectId = $(this).data('project-id');
+                const allocationId = $(this).data('allocation-id');
+                const hasReceipt = $(this).data('has-receipt') == 1;
+                $('#upload-receipt-project-id').val(projectId);
+                $('#upload-receipt-allocation-id').val(allocationId);
+                $('#receipt_file').val('');
+                const receiptUrl = '{{ url("/") }}/projects/' + projectId + '/allocations/' + allocationId + '/receipt';
+                if (hasReceipt) {
+                    $('#receipt-view-link').attr('href', receiptUrl);
+                    $('#receipt-view-area').show();
+                } else {
+                    $('#receipt-view-area').hide();
+                }
+                new bootstrap.Modal(document.getElementById('uploadReceiptModal')).show();
+            });
+
+            $('#uploadReceiptBtn').on('click', function () {
+                const projectId = $('#upload-receipt-project-id').val();
+                const allocationId = $('#upload-receipt-allocation-id').val();
+                const fileInput = document.getElementById('receipt_file');
+                if (!fileInput.files.length) {
+                    toastr.warning('يرجى اختيار ملف للرفع');
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('receipt_file', fileInput.files[0]);
+                formData.append('_token', '{{ csrf_token() }}');
+                const url = uploadReceiptUrlTemplate.replace('__PID__', projectId).replace('__AID__', allocationId);
+                $.ajax({
+                    url: url,
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function () {
+                        bootstrap.Modal.getInstance(document.getElementById('uploadReceiptModal')).hide();
+                        toastr.success('تم رفع الملف بنجاح');
+                        location.reload();
+                    },
+                    error: function (xhr) {
+                        const msg = xhr.responseJSON?.message || xhr.responseJSON?.errors?.receipt_file?.[0] || 'فشل رفع الملف';
+                        toastr.error(msg);
+                    }
+                });
+            });
+
             $('.view-project-breakdown-btn').on('click', function () {
                 const projectId = $(this).data('project-id');
 
@@ -612,7 +705,7 @@
                         $tbody.empty();
 
                         if (response.breakdown.length === 0) {
-                            $tbody.append('<tr><td colspan="5" class="text-center text-muted">لا توجد عمليات صرف لهذا المشروع</td></tr>');
+                            $tbody.append('<tr><td colspan="6" class="text-center text-muted">لا توجد عمليات صرف لهذا المشروع</td></tr>');
                         } else {
                             response.breakdown.forEach(function (item) {
                                 const allocatedDisplay = response.project.project_type === 'cash'
@@ -627,6 +720,10 @@
                                     ? `<a href="${aidCountUrl}" class="text-primary text-decoration-none">${item.aid_count}</a>`
                                     : item.aid_count;
 
+                                const receiptCell = item.receipt_url
+                                    ? `<a href="${item.receipt_url}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-file-pdf me-1"></i>عرض</a>`
+                                    : '<span class="text-muted small">المكتب مش مسلم نهائي الملف</span>';
+
                                 $tbody.append(`
                                     <tr>
                                         <td>${item.office_name}</td>
@@ -634,6 +731,7 @@
                                         <td>${item.beneficiaries}</td>
                                         <td>${aidCountCell}</td>
                                         <td>${valueDisplay}</td>
+                                        <td>${receiptCell}</td>
                                     </tr>
                                 `);
                             });

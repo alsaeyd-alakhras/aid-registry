@@ -15,6 +15,7 @@ class Project extends Model
         'project_type',
         'aid_item_id',
         'total_quantity',
+        'unit_value_ils',
         'total_amount_ils',
         'estimated_amount',
         'beneficiaries_total',
@@ -39,6 +40,7 @@ class Project extends Model
 
     protected $casts = [
         'total_quantity' => 'decimal:2',
+        'unit_value_ils' => 'decimal:2',
         'consumed_quantity' => 'decimal:2',
         'total_amount_ils' => 'decimal:2',
         'consumed_amount' => 'decimal:2',
