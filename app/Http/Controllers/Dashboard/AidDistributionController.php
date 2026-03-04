@@ -9,9 +9,11 @@ use App\Models\Family;
 use App\Models\Institution;
 use App\Models\Office;
 use App\Models\Project;
+use App\Exports\AidDistributionsExport;
 use App\Services\ProjectConsumptionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -95,6 +97,74 @@ class AidDistributionController extends Controller
         }
 
         return view('dashboard.aid_distributions.index');
+    }
+
+    public function exportExcel(Request $request)
+    {
+        $this->authorizeLookupForAidDistribution();
+
+        $user = Auth::user();
+        $office_id = ($user && $user->user_type === 'employee') ? $user->office_id : null;
+
+        $year = $request->year ?? Carbon::now()->year;
+        $columnFilters = $request->column_filters;
+        if (is_string($columnFilters)) {
+            $columnFilters = json_decode($columnFilters, true) ?? [];
+        }
+
+        $distributions = AidDistribution::query()
+            ->with(['family', 'office', 'institution', 'aidItem', 'creator', 'project'])
+            ->whereYear('distributed_at', $year)
+            ->orderBy('distributed_at', 'desc');
+
+        if ($request->from_date) {
+            $distributions->whereDate('distributed_at', '>=', $request->from_date);
+        }
+        if ($request->to_date) {
+            $distributions->whereDate('distributed_at', '<=', $request->to_date);
+        }
+        if (!empty($columnFilters)) {
+            $this->applyColumnFilters($distributions, $columnFilters);
+        }
+        if ($request->project_id) {
+            $distributions->where('project_id', $request->project_id);
+        }
+        if ($request->office_id && !$office_id) {
+            $distributions->where('office_id', $request->office_id);
+        }
+        if ($office_id) {
+            $distributions->where('office_id', $office_id);
+        }
+
+        $rows = $distributions->get()->map(function (AidDistribution $distribution) {
+            $family = $distribution->family;
+
+            return [
+                'id' => $distribution->id,
+                'distributed_at' => optional($distribution->distributed_at)->format('Y-m-d'),
+                'primary_name' => $family?->full_name ?? '-',
+                'national_id' => $family?->national_id ?? '-',
+                'housing_location' => $family?->address ?? '-',
+                'family_members_count' => $family?->family_members_count ?? '-',
+                'marital_status' => $this->translateMaritalStatus($family?->marital_status),
+                'office_name' => $distribution->office?->name ?? '-',
+                'institution_name' => $distribution->institution?->name ?? '-',
+                'project_name' => $distribution->project ? ($distribution->project->project_number . ' - ' . $distribution->project->name) : '-',
+                'aid_mode' => $distribution->aid_mode,
+                'aid_value' => $distribution->aid_mode === 'cash'
+                    ? ($distribution->cash_amount ?? 0)
+                    : ($distribution->aidItem?->name ?? '-'),
+                'quantity' => $distribution->aid_mode === 'in_kind'
+                    ? ($distribution->quantity !== null ? number_format((float) $distribution->quantity, 2) : '-')
+                    : '-',
+                'mobile' => $family?->phone ?? '-',
+                'creator_name' => $distribution->creator?->name ?? '-',
+            ];
+        })->values();
+
+        $filename = 'مساعدات_' . $year . '_' . now()->format('Y-m-d_His') . '.xlsx';
+
+        return Excel::download(new AidDistributionsExport($rows), $filename, \Maatwebsite\Excel\Excel::XLSX);
     }
 
     public function create()

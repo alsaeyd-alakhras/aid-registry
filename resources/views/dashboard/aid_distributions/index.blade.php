@@ -62,16 +62,11 @@
                 <option value="-1">all</option>
             </select>
         </div>
-        {{-- @can('export-excel', 'App\\Models\AidDistribution')
         <div class="mx-2 nav-item">
-            <button type="button" class="text-white btn btn-icon btn-success" id="excel-export" title="تصدير excel">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" width="16" height="16">
-                    <path
-                        d="M64 0C28.7 0 0 28.7 0 64L0 448c0 35.3 28.7 64 64 64l256 0c35.3 0 64-28.7 64-64l0-288-128 0c-17.7 0-32-14.3-32-32L224 0 64 0zM256 0l0 128 128 0L256 0zM155.7 250.2L192 302.1l36.3-51.9c7.6-10.9 22.6-13.5 33.4-5.9s13.5 22.6 5.9 33.4L221.3 344l46.4 66.2c7.6 10.9 5 25.8-5.9 33.4s-25.8 5-33.4-5.9L192 385.8l-36.3 51.9c-7.6 10.9-22.6 13.5-33.4 5.9s-13.5-22.6-5.9-33.4L162.7 344l-46.4-66.2c-7.6-10.9-5-25.8 5.9-33.4s25.8-5 33.4 5.9z" />
-                </svg>
+            <button type="button" class="m-0 text-white btn btn-success" id="aid-excel-export" title="تصدير Excel">
+                <i class="fa-solid fa-file-excel fe-16 me-1"></i> تصدير Excel
             </button>
         </div>
-        @endcan --}}
         @can('import', 'App\\Models\AidDistribution')
         <div class="mx-2 nav-item">
             <a href="{{ route('dashboard.import') }}" class="m-0 text-white btn btn-success">
@@ -195,6 +190,16 @@
             </div>
         </div>
     </div>
+
+    <form method="POST" action="{{ route('dashboard.aid-distributions.export-excel') }}" target="_blank" id="aid-export-form" class="d-none">
+        @csrf
+        <input type="hidden" name="year" id="export-year">
+        <input type="hidden" name="from_date" id="export-from_date">
+        <input type="hidden" name="to_date" id="export-to_date">
+        <input type="hidden" name="column_filters" id="export-column_filters">
+        <input type="hidden" name="project_id" id="export-project_id">
+        <input type="hidden" name="office_id" id="export-office_id">
+    </form>
 
     <div class="modal fade delete-modal" id="deleteConfirmModal" tabindex="-1"
         aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
@@ -349,7 +354,44 @@
             const dataForm = {};
             const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
             const columnNamesCopy = ['distributed_at', 'primary_name', 'national_id', 'housing_location', 'family_members_count', 'marital_status', 'office_name', 'institution_name', 'project_name', 'aid_mode', 'aid_value', 'quantity', 'mobile', 'creator_name'];
+            const urlExportExcel = `{{ route('dashboard.aid-distributions.export-excel') }}`;
         </script>
         <script type="text/javascript" src="{{ asset('js/datatable.js') }}"></script>
+        <script>
+            $(document).on('click', '#aid-excel-export', function() {
+                function getExportFilters() {
+                    let filters = {};
+                    $('input[type="checkbox"]:checked').each(function() {
+                        let className = $(this).attr('class');
+                        let value = $(this).val();
+                        if (value === "الكل" || value === "all" || value === "All") return;
+                        let fieldMatch = className.match(/(\w+)-checkbox/);
+                        if (fieldMatch) {
+                            let fieldName = fieldMatch[1];
+                            if (!filters[fieldName]) filters[fieldName] = [];
+                            filters[fieldName].push(value);
+                        }
+                    });
+                    let fromDate = $("#from_date").val();
+                    let toDate = $("#to_date").val();
+                    if (fromDate || toDate) {
+                        filters['distributed_at'] = {};
+                        if (fromDate) filters['distributed_at']['from'] = fromDate;
+                        if (toDate) filters['distributed_at']['to'] = toDate;
+                    }
+                    return filters;
+                }
+                let form = $('#aid-export-form');
+                form.attr('action', urlExportExcel);
+                form.find('#export-year').val($('#year').val() || '');
+                form.find('#export-from_date').val($('#from_date').val() || '');
+                form.find('#export-to_date').val($('#to_date').val() || '');
+                form.find('#export-column_filters').val(JSON.stringify(getExportFilters()));
+                let urlParams = new URLSearchParams(window.location.search);
+                form.find('#export-project_id').val(urlParams.get('project_id') || '');
+                form.find('#export-office_id').val(urlParams.get('office_id') || '');
+                form.submit();
+            });
+        </script>
     @endpush
 </x-front-layout>

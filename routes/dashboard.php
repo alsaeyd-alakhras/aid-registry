@@ -62,6 +62,8 @@ Route::group([
     Route::resource('currencies', CurrencyController::class)->except(['show','edit','create']);
 
 
+    Route::post('aid-distributions/export-excel', [AidDistributionController::class, 'exportExcel'])->name('aid-distributions.export-excel');
+
     Route::resources([
         'users' => UserController::class,
         'offices' => OfficeController::class,
