@@ -127,7 +127,13 @@
                                     <th class="{{ $loop->index < 3 ? 'enhanced-sticky' : '' }}">
                                         <div class="d-flex align-items-center justify-content-between">
                                             <span>{{ $label }}</span>
-                                            <div class="enhanced-filter-dropdown">
+                                            <div class="enhanced-filter-dropdown d-flex align-items-center gap-1">
+                                                @if ($index != 'edit')
+                                                <button class="btn-sort btn btn-sm border-0 p-1" type="button"
+                                                    data-sort-field="{{ $index }}" title="فرز">
+                                                    <i class="fas fa-sort text-muted"></i>
+                                                </button>
+                                                @endif
                                                 <div class="dropdown">
                                                     <button class="enhanced-btn-filter btn-filter" type="button"
                                                         data-bs-toggle="dropdown"
@@ -153,7 +159,7 @@
                                                                 <button class="enhanced-apply-btn flex-fill" id="filter-date-btn">
                                                                     <i class="fas fa-check me-1"></i> تطبيق
                                                                 </button>
-                                                                <button class="btn btn-outline-secondary btn-sm flex-fill" id="filter-date-btn">
+                                                                <button class="btn btn-outline-secondary btn-sm flex-fill" id="filter-date-clear-btn" type="button">
                                                                     <i class="fas fa-times me-1"></i> مسح
                                                                 </button>
                                                             </div>
@@ -352,6 +358,9 @@
 
             const SUMMABLE_COLUMNS = { enabled: false, columns: {} };
             const dataForm = {};
+            const sortConfig = { enabled: true };
+            let currentSortColumn = '';
+            let currentSortDirection = '';
             const columnsCopy = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
             const columnNamesCopy = ['distributed_at', 'primary_name', 'national_id', 'housing_location', 'family_members_count', 'marital_status', 'office_name', 'institution_name', 'project_name', 'aid_mode', 'aid_value', 'quantity', 'mobile', 'creator_name'];
             const urlExportExcel = `{{ route('dashboard.aid-distributions.export-excel') }}`;

@@ -148,6 +148,11 @@ $(document).ready(function () {
 
                 d.column_filters = getActiveColumnFilters();
 
+                if (typeof sortConfig !== 'undefined' && sortConfig.enabled && typeof currentSortColumn !== 'undefined' && currentSortColumn && currentSortDirection) {
+                    d.sort_column = currentSortColumn;
+                    d.sort_direction = currentSortDirection;
+                }
+
                 // فلترة من رابط الصفحة (سجل المساعدات)
                 const urlParams = new URLSearchParams(window.location.search);
                 if (urlParams.has('project_id')) d.project_id = urlParams.get('project_id');
@@ -425,7 +430,7 @@ $(document).ready(function () {
             });
 
             // فحص فلتر التاريخ (بنفس طريقتك)
-            if (fields[i] === 'implementation_date' || fields[i] === 'date') {
+            if (fields[i] === 'implementation_date' || fields[i] === 'date' || fields[i] === 'distributed_at') {
                 if ($("#from_date").val() || $("#to_date").val()) {
                     hasActiveFilter = true;
                 }
@@ -562,10 +567,47 @@ $(document).ready(function () {
     });
     // تطبيق التصفية عند النقر على زر "Apply"
     $(document).on("click", "#filter-date-btn", function () {
-        const fromDate = $("#from_date").val();
-        const toDate = $("#to_date").val();
-        table.ajax.reload(); // إعادة تحميل الجدول مع التواريخ المحدثة
+        table.ajax.reload();
     });
+    // مسح فلتر التاريخ
+    $(document).on("click", "#filter-date-clear-btn", function () {
+        $("#from_date").val("");
+        $("#to_date").val("");
+        table.ajax.reload();
+        updateClearFilterButton();
+    });
+    // زر الفرز (لجدول المساعدات)
+    $(document).on("click", ".btn-sort", function () {
+        if (typeof sortConfig === 'undefined' || !sortConfig.enabled || typeof currentSortColumn === 'undefined') return;
+        const field = $(this).data("sort-field");
+        if (!field) return;
+        if (currentSortColumn === field) {
+            if (currentSortDirection === 'asc') {
+                currentSortDirection = 'desc';
+            } else {
+                currentSortColumn = '';
+                currentSortDirection = '';
+            }
+        } else {
+            currentSortColumn = field;
+            currentSortDirection = 'asc';
+        }
+        updateSortButtonsUI();
+        table.ajax.reload();
+    });
+    function updateSortButtonsUI() {
+        if (typeof sortConfig === 'undefined' || !sortConfig.enabled) return;
+        $(".btn-sort").each(function () {
+            const field = $(this).data("sort-field");
+            const icon = $(this).find("i");
+            icon.removeClass("fa-sort fa-sort-up fa-sort-down text-muted text-primary");
+            if (currentSortColumn === field) {
+                icon.addClass(currentSortDirection === 'asc' ? 'fa-sort-up text-primary' : 'fa-sort-down text-primary');
+            } else {
+                icon.addClass("fa-sort text-muted");
+            }
+        });
+    }
     function hasActiveFilters() {
         let hasFilters = false;
 
@@ -603,6 +645,11 @@ $(document).ready(function () {
 
         // مسح فلاتر الأعمدة
         table.columns().search("");
+
+        // إعادة تعيين الفرز (لجدول المساعدات)
+        if (typeof currentSortColumn !== 'undefined') currentSortColumn = '';
+        if (typeof currentSortDirection !== 'undefined') currentSortDirection = '';
+        if (typeof updateSortButtonsUI === 'function') updateSortButtonsUI();
 
         // إعادة تحميل الجدول
         table.ajax.reload(null, false);

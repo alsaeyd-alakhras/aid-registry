@@ -36,8 +36,7 @@ class AidDistributionController extends Controller
 
             $distributions = AidDistribution::query()
                 ->with(['family', 'office', 'institution', 'aidItem', 'creator', 'project'])
-                ->whereYear('distributed_at', $year)
-                ->orderBy('distributed_at', 'desc');
+                ->whereYear('distributed_at', $year);
 
             if ($request->from_date) {
                 $distributions->whereDate('distributed_at', '>=', $request->from_date);
@@ -58,6 +57,8 @@ class AidDistributionController extends Controller
             if ($office_id) {
                 $distributions->where('office_id', $office_id);
             }
+
+            $this->applySort($distributions, $request->sort_column, $request->sort_direction);
 
             $rows = $distributions->get()->map(function (AidDistribution $distribution) {
                 $family = $distribution->family;
@@ -574,6 +575,90 @@ class AidDistributionController extends Controller
                     $query->whereIn($fieldName, $filteredValues);
                     break;
             }
+        }
+    }
+
+    private function applySort($query, ?string $sortColumn, ?string $sortDirection): void
+    {
+        $dir = in_array(strtolower((string) $sortDirection), ['asc', 'desc'], true)
+            ? strtolower($sortDirection)
+            : null;
+
+        if (empty($sortColumn) || $dir === null) {
+            $query->orderBy('aid_distributions.distributed_at', 'desc');
+            return;
+        }
+
+        $baseTable = 'aid_distributions';
+
+        switch ($sortColumn) {
+            case 'distributed_at':
+                $query->orderBy("{$baseTable}.distributed_at", $dir);
+                break;
+            case 'primary_name':
+                $query->leftJoin('families', "{$baseTable}.family_id", '=', 'families.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('families.full_name', $dir);
+                break;
+            case 'national_id':
+                $query->leftJoin('families', "{$baseTable}.family_id", '=', 'families.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('families.national_id', $dir);
+                break;
+            case 'housing_location':
+                $query->leftJoin('families', "{$baseTable}.family_id", '=', 'families.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('families.address', $dir);
+                break;
+            case 'family_members_count':
+                $query->leftJoin('families', "{$baseTable}.family_id", '=', 'families.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('families.family_members_count', $dir);
+                break;
+            case 'marital_status':
+                $query->leftJoin('families', "{$baseTable}.family_id", '=', 'families.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('families.marital_status', $dir);
+                break;
+            case 'office_name':
+                $query->leftJoin('offices', "{$baseTable}.office_id", '=', 'offices.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('offices.name', $dir);
+                break;
+            case 'institution_name':
+                $query->leftJoin('institutions', "{$baseTable}.institution_id", '=', 'institutions.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('institutions.name', $dir);
+                break;
+            case 'project_name':
+                $query->leftJoin('projects', "{$baseTable}.project_id", '=', 'projects.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('projects.project_number', $dir);
+                break;
+            case 'aid_mode':
+                $query->orderBy("{$baseTable}.aid_mode", $dir);
+                break;
+            case 'aid_value':
+                $query->leftJoin('aid_items', "{$baseTable}.aid_item_id", '=', 'aid_items.id')
+                    ->select("{$baseTable}.*")
+                    ->orderByRaw("COALESCE(CAST({$baseTable}.cash_amount AS CHAR), aid_items.name) {$dir}");
+                break;
+            case 'quantity':
+                $query->orderBy("{$baseTable}.quantity", $dir);
+                break;
+            case 'mobile':
+                $query->leftJoin('families', "{$baseTable}.family_id", '=', 'families.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('families.phone', $dir);
+                break;
+            case 'creator_name':
+                $query->leftJoin('users', "{$baseTable}.created_by", '=', 'users.id')
+                    ->select("{$baseTable}.*")
+                    ->orderBy('users.name', $dir);
+                break;
+            default:
+                $query->orderBy("{$baseTable}.distributed_at", 'desc');
+                break;
         }
     }
 
