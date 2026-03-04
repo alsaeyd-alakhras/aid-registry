@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Imports\AidDistributionsImport;
 use App\Models\AidDistribution;
 use App\Models\AidDistributionImportBatch;
+use App\Models\Project;
 use App\Services\AidDistributionImportService;
 use App\Services\DashboardService;
 use App\Services\ProjectConsumptionService;
@@ -28,6 +29,14 @@ class HomeController extends Controller
         $recentDistributions = $dashboardService->getRecentDistributions();
         $projectStats = $dashboardService->getProjectStats();
         $showStorageOfficesBalance = Auth::user()?->user_type !== 'employee';
+
+        $projectIds = $projectStats->pluck('id')->filter()->unique()->values()->all();
+        $projects = Project::findMany($projectIds);
+        $canEditMap = $projects->mapWithKeys(fn ($p) => [$p->id => Auth::user()?->can('update', $p) ?? false])->all();
+        $projectStats->getCollection()->transform(function ($item) use ($canEditMap) {
+            $item['can_edit'] = $canEditMap[$item['id']] ?? false;
+            return $item;
+        });
 
         return view('dashboard.index', compact(
             'year',

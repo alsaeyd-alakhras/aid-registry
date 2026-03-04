@@ -33,7 +33,7 @@ class AidDistributionController extends Controller
             $year = $request->year ?? Carbon::now()->year;
 
             $distributions = AidDistribution::query()
-                ->with(['family', 'office', 'institution', 'aidItem', 'creator'])
+                ->with(['family', 'office', 'institution', 'aidItem', 'creator', 'project'])
                 ->whereYear('distributed_at', $year)
                 ->orderBy('distributed_at', 'desc');
 
@@ -46,6 +46,12 @@ class AidDistributionController extends Controller
 
             if ($request->column_filters) {
                 $this->applyColumnFilters($distributions, $request->column_filters);
+            }
+            if ($request->project_id) {
+                $distributions->where('project_id', $request->project_id);
+            }
+            if ($request->office_id && !$office_id) {
+                $distributions->where('office_id', $request->office_id);
             }
             if ($office_id) {
                 $distributions->where('office_id', $office_id);
@@ -64,6 +70,7 @@ class AidDistributionController extends Controller
                     'marital_status' => $this->translateMaritalStatus($family?->marital_status),
                     'office_name' => $distribution->office?->name ?? '-',
                     'institution_name' => $distribution->institution?->name ?? '-',
+                    'project_name' => $distribution->project ? ($distribution->project->project_number . ' - ' . $distribution->project->name) : '-',
                     'aid_mode' => $distribution->aid_mode,
                     'aid_value' => $distribution->aid_mode === 'cash'
                         ? ($distribution->cash_amount ?? 0)
@@ -199,9 +206,11 @@ class AidDistributionController extends Controller
         $this->authorizeLookupForAidDistribution();
 
         $year = $request->year ?? Carbon::now()->year;
+        $user = Auth::user();
+        $officeId = ($user && $user->user_type === 'employee') ? (int) $user->office_id : null;
 
         $query = AidDistribution::query()
-            ->with(['family', 'office', 'institution', 'aidItem', 'creator'])
+            ->with(['family', 'office', 'institution', 'aidItem', 'creator', 'project'])
             ->whereYear('distributed_at', $year);
 
         if ($request->from_date) {
@@ -209,6 +218,16 @@ class AidDistributionController extends Controller
         }
         if ($request->to_date) {
             $query->whereDate('distributed_at', '<=', $request->to_date);
+        }
+
+        if ($request->project_id) {
+            $query->where('project_id', $request->project_id);
+        }
+        if ($request->office_id && !$officeId) {
+            $query->where('office_id', $request->office_id);
+        }
+        if ($officeId) {
+            $query->where('office_id', $officeId);
         }
 
         if ($request->active_filters) {
@@ -220,6 +239,7 @@ class AidDistributionController extends Controller
             'distributed_at' => $rows->pluck('distributed_at')->filter()->map(fn ($d) => $d->format('Y-m-d'))->unique()->values()->toArray(),
             'office_name' => $rows->pluck('office.name')->filter()->unique()->values()->toArray(),
             'institution_name' => $rows->pluck('institution.name')->filter()->unique()->values()->toArray(),
+            'project_name' => $rows->map(fn (AidDistribution $d) => $d->project ? $d->project->project_number . ' - ' . $d->project->name : null)->filter()->unique()->values()->toArray(),
             'aid_mode' => $rows->pluck('aid_mode')->filter()->unique()->values()->toArray(),
             'aid_value' => $rows->map(function (AidDistribution $d) {
                 return $d->aid_mode === 'cash' ? (string) ($d->cash_amount ?? 0) : ($d->aidItem?->name ?? null);
@@ -426,6 +446,16 @@ class AidDistributionController extends Controller
                     break;
                 case 'institution_name':
                     $query->whereHas('institution', fn ($q) => $q->whereIn('name', $filteredValues));
+                    break;
+                case 'project_name':
+                    $projectNumbers = array_map(function ($val) {
+                        $parts = explode(' - ', (string) $val, 2);
+                        return trim($parts[0] ?? '');
+                    }, $filteredValues);
+                    $projectNumbers = array_filter($projectNumbers);
+                    if (!empty($projectNumbers)) {
+                        $query->whereHas('project', fn ($q) => $q->whereIn('project_number', $projectNumbers));
+                    }
                     break;
                 case 'creator_name':
                     $query->whereHas('creator', fn ($q) => $q->whereIn('name', $filteredValues));

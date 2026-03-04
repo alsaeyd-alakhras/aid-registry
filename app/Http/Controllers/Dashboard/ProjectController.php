@@ -8,6 +8,7 @@ use App\Models\AidItem;
 use App\Models\Institution;
 use App\Models\Office;
 use App\Models\Project;
+use App\Models\ProjectOfficeAllocation;
 use App\Models\ProjectStat;
 use App\Services\ProjectNumberService;
 use Illuminate\Http\Request;
@@ -557,27 +558,70 @@ class ProjectController extends Controller
     {
         $this->authorize('view', Project::class);
 
-        $project = Project::query()->with('institution', 'aidItem')->findOrFail($projectId);
+        $project = Project::query()->with(['institution', 'aidItem', 'officeAllocations.office'])->findOrFail($projectId);
+        $user = Auth::user();
+        $employeeOfficeId = ($user && $user->user_type === 'employee') ? (int) $user->office_id : null;
 
-        $breakdown = AidDistribution::query()
+        // المعتمد ككل (رصيد المكاتب)
+        $allocations = $project->officeAllocations;
+        $officesBalanceAmount = (float) $allocations->sum('max_amount');
+        $officesBalanceQuantity = (float) $allocations->sum('max_quantity');
+
+        // المكاتب المعتمدة للمشروع (للدخول في الجدول)
+        $officeIdsWithAllocation = $allocations
+            ->filter(fn ($a) => ($a->max_beneficiaries ?? 0) > 0 || ($a->max_amount ?? 0) > 0 || ($a->max_quantity ?? 0) > 0)
+            ->pluck('office_id')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($employeeOfficeId) {
+            $officeIdsWithAllocation = in_array($employeeOfficeId, $officeIdsWithAllocation)
+                ? [$employeeOfficeId]
+                : [];
+        }
+
+        $allocationsByOffice = $allocations->keyBy('office_id');
+
+        // استهلاك مجمع حسب المكتب (بدون تجزئة الموظف)
+        $consumptionQuery = AidDistribution::query()
             ->where('project_id', $projectId)
             ->where('status', 'active')
-            ->with(['office', 'creator'])
-            ->select('office_id', 'created_by')
-            ->selectRaw('COUNT(*) as beneficiaries')
-            ->selectRaw("SUM(CASE WHEN aid_mode = 'cash' THEN cash_amount ELSE 0 END) as total_cash")
-            ->selectRaw("SUM(CASE WHEN aid_mode = 'in_kind' THEN quantity ELSE 0 END) as total_quantity")
-            ->groupBy('office_id', 'created_by')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'office_name' => $item->office?->name ?? '-',
-                    'creator_name' => $item->creator?->name ?? '-',
-                    'beneficiaries' => (int) $item->beneficiaries,
-                    'total_cash' => (float) $item->total_cash,
-                    'total_quantity' => (float) $item->total_quantity,
-                ];
-            });
+            ->select('office_id')
+            ->selectRaw('COUNT(*) as aid_count')
+            ->selectRaw('COUNT(DISTINCT family_id) as beneficiaries')
+            ->selectRaw("SUM(CASE WHEN aid_mode = 'cash' THEN COALESCE(cash_amount, 0) ELSE 0 END) as total_cash")
+            ->selectRaw("SUM(CASE WHEN aid_mode = 'in_kind' THEN COALESCE(quantity, 0) ELSE 0 END) as total_quantity")
+            ->groupBy('office_id');
+
+        if ($employeeOfficeId) {
+            $consumptionQuery->where('office_id', $employeeOfficeId);
+        } elseif (!empty($officeIdsWithAllocation)) {
+            $consumptionQuery->whereIn('office_id', $officeIdsWithAllocation);
+        }
+
+        $consumptionByOffice = $consumptionQuery->get()->keyBy('office_id');
+
+        // بناء الصفوف: فقط المكاتب المعتمدة (أو مكتب الموظف)
+        $breakdown = collect();
+        $officeIdsToShow = $employeeOfficeId ? [$employeeOfficeId] : $officeIdsWithAllocation;
+
+        foreach ($officeIdsToShow as $oid) {
+            $alloc = $allocationsByOffice->get($oid);
+            $cons = $consumptionByOffice->get($oid);
+            $office = $alloc?->office ?? Office::find($oid);
+
+            $breakdown->push([
+                'office_id' => $oid,
+                'office_name' => $office?->name ?? '-',
+                'allocated_amount' => (float) ($alloc->max_amount ?? 0),
+                'allocated_quantity' => (float) ($alloc->max_quantity ?? 0),
+                'beneficiaries' => (int) ($cons->beneficiaries ?? 0),
+                'aid_count' => (int) ($cons->aid_count ?? 0),
+                'total_cash' => (float) ($cons->total_cash ?? 0),
+                'total_quantity' => (float) ($cons->total_quantity ?? 0),
+            ]);
+        }
 
         return response()->json([
             'project' => [
@@ -586,6 +630,8 @@ class ProjectController extends Controller
                 'institution_name' => $project->institution?->name ?? '-',
                 'project_type' => $project->project_type,
                 'aid_item_name' => $project->aidItem?->name ?? '-',
+                'offices_balance_amount' => $officesBalanceAmount,
+                'offices_balance_quantity' => $officesBalanceQuantity,
             ],
             'breakdown' => $breakdown,
         ]);

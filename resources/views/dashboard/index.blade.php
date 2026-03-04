@@ -151,8 +151,16 @@
                     <tbody>
                         @forelse ($projectStats as $project)
                             <tr>
-                                <td>{{ $project['project_number'] }}</td>
-                                <td>{{ $project['name'] }}</td>
+                                <td>
+                                    @if($project['can_edit'] ?? false)
+                                        <a href="{{ route('dashboard.projects.edit', $project['id']) }}" class="text-decoration-none">{{ $project['project_number'] }}</a>
+                                    @else
+                                        {{ $project['project_number'] }}
+                                    @endif
+                                </td>
+                                <td>
+                                    <span class="view-project-breakdown-btn text-primary text-decoration-underline" data-project-id="{{ $project['id'] }}" role="button" title="تفاصيل المشروع" style="cursor: pointer;">{{ $project['name'] }}</span>
+                                </td>
                                 <td>{{ $project['institution_name'] }}</td>
                                 <td>
                                     @if($project['project_type'] === 'cash')
@@ -171,10 +179,13 @@
                                     @endif
                                 </td>
                                 <td>
+                                    @php
+                                        $aidDistUrl = route('dashboard.aid-distributions.index', ['project_id' => $project['id']]);
+                                    @endphp
                                     @if($project['project_type'] === 'cash')
-                                        <span class="text-danger">{{ $formatMoney($project['consumed_amount']) }} ₪</span>
+                                        <a href="{{ $aidDistUrl }}" class="text-danger text-decoration-none">{{ $formatMoney($project['consumed_amount']) }} ₪</a>
                                     @else
-                                        <span class="text-danger">{{ number_format($project['consumed_quantity'], 2) }}</span>
+                                        <a href="{{ $aidDistUrl }}" class="text-danger text-decoration-none">{{ number_format($project['consumed_quantity'], 2) }}</a>
                                     @endif
                                 </td>
                                 <td>
@@ -460,16 +471,20 @@
                         <div class="col-md-6">
                             <strong>النوع:</strong> <span id="breakdown-type"></span>
                         </div>
+                        <div class="col-md-6">
+                            <strong>المعتمد ككل:</strong> <span id="breakdown-offices-balance"></span>
+                        </div>
                     </div>
                     <hr>
-                    <h6>توزيع الصرف حسب المكتب والموظف:</h6>
+                    <h6>توزيع الصرف حسب المكتب:</h6>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered">
                             <thead class="table-light">
                                 <tr>
                                     <th>المكتب</th>
-                                    <th>الموظف</th>
+                                    <th>المعتمد للمكتب</th>
                                     <th>عدد المستفيدين</th>
+                                    <th>عدد المساعدات</th>
                                     <th>المبلغ/الكمية</th>
                                 </tr>
                             </thead>
@@ -570,6 +585,8 @@
                 }
             });
 
+            const aidDistributionsUrl = @json(route('dashboard.aid-distributions.index'));
+
             $('.view-project-breakdown-btn').on('click', function () {
                 const projectId = $(this).data('project-id');
 
@@ -586,25 +603,39 @@
                             : `عيني (${response.project.aid_item_name})`;
                         $('#breakdown-type').text(typeText);
 
+                        const officesBalanceText = response.project.project_type === 'cash'
+                            ? parseFloat(response.project.offices_balance_amount || 0).toFixed(2) + ' ₪'
+                            : parseFloat(response.project.offices_balance_quantity || 0).toFixed(2);
+                        $('#breakdown-offices-balance').text(officesBalanceText);
+
                         const $tbody = $('#breakdown-table-body');
                         $tbody.empty();
 
                         if (response.breakdown.length === 0) {
-                            $tbody.append('<tr><td colspan="4" class="text-center text-muted">لا توجد عمليات صرف لهذا المشروع</td></tr>');
+                            $tbody.append('<tr><td colspan="5" class="text-center text-muted">لا توجد عمليات صرف لهذا المشروع</td></tr>');
                         } else {
                             response.breakdown.forEach(function (item) {
+                                const allocatedDisplay = response.project.project_type === 'cash'
+                                    ? parseFloat(item.allocated_amount || 0).toFixed(2) + ' ₪'
+                                    : parseFloat(item.allocated_quantity || 0).toFixed(2);
                                 const valueDisplay = response.project.project_type === 'cash'
-                                    ? parseFloat(item.total_cash).toFixed(2) + ' ₪'
-                                    : parseFloat(item.total_quantity).toFixed(2);
+                                    ? parseFloat(item.total_cash || 0).toFixed(2) + ' ₪'
+                                    : parseFloat(item.total_quantity || 0).toFixed(2);
+
+                                const aidCountUrl = aidDistributionsUrl + '?project_id=' + projectId + '&office_id=' + (item.office_id || '');
+                                const aidCountCell = item.aid_count > 0
+                                    ? `<a href="${aidCountUrl}" class="text-primary text-decoration-none">${item.aid_count}</a>`
+                                    : item.aid_count;
 
                                 $tbody.append(`
-                                            <tr>
-                                                <td>${item.office_name}</td>
-                                                <td>${item.creator_name}</td>
-                                                <td>${item.beneficiaries}</td>
-                                                <td>${valueDisplay}</td>
-                                            </tr>
-                                        `);
+                                    <tr>
+                                        <td>${item.office_name}</td>
+                                        <td>${allocatedDisplay}</td>
+                                        <td>${item.beneficiaries}</td>
+                                        <td>${aidCountCell}</td>
+                                        <td>${valueDisplay}</td>
+                                    </tr>
+                                `);
                             });
                         }
 

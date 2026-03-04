@@ -147,6 +147,11 @@ $(document).ready(function () {
                 d.year = $("#year").val();
 
                 d.column_filters = getActiveColumnFilters();
+
+                // فلترة من رابط الصفحة (سجل المساعدات)
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('project_id')) d.project_id = urlParams.get('project_id');
+                if (urlParams.has('office_id')) d.office_id = urlParams.get('office_id');
             },
             dataSrc: function(json) {
                 // تحديث مجاميع tfoot
@@ -365,14 +370,20 @@ $(document).ready(function () {
 
         let activeFilters = getActiveColumnFiltersExcept(columnIndex);
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const ajaxData = {
+            from_date: $("#from_date").val(),
+            to_date: $("#to_date").val(),
+            type: $("#type").val(),
+            active_filters: activeFilters
+        };
+        if ($("#year").length) ajaxData.year = $("#year").val();
+        if (urlParams.has('project_id')) ajaxData.project_id = urlParams.get('project_id');
+        if (urlParams.has('office_id')) ajaxData.office_id = urlParams.get('office_id');
+
         $.ajax({
             url: urlFilters.replace(":column", columnName),
-            data: {
-                from_date: $("#from_date").val(),
-                to_date: $("#to_date").val(),
-                type: $("#type").val(),
-                active_filters: activeFilters
-            },
+            data: ajaxData,
             success: function (uniqueValues) {
                 uniqueValues.sort();
 
