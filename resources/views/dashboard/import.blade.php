@@ -203,11 +203,19 @@
                                             @endif
                                         </td>
                                         <td>
-                                            @if($row->duplicate_details)
-                                                @if(isset($row->duplicate_details['details']))
-                                                    المكتب: {{ $row->duplicate_details['details']['office_name'] ?? '-' }}<br>
-                                                    التاريخ: {{ $row->duplicate_details['details']['distributed_at'] ?? '-' }}
+                                            @if($row->duplicate_in_db && $row->duplicate_details && isset($row->duplicate_details['details']))
+                                                @php $d = $row->duplicate_details['details']; @endphp
+                                                @if(($d['matched_as'] ?? '') === 'wife_as_primary')
+                                                    <span class="text-warning">زوجها مسجل</span><br>
+                                                @elseif(($d['matched_as'] ?? '') === 'wife_in_spouses')
+                                                    <span class="text-warning">الأسرة مسجلة سابقاً ربما باسم آخر</span><br>
                                                 @endif
+                                                العائلة: {{ $d['family_name'] ?? '-' }}<br>
+                                                المكتب: {{ $d['office_name'] ?? '-' }}<br>
+                                                التاريخ: {{ $d['distributed_at'] ?? '-' }}<br>
+                                                الحالة: {{ $d['status_label'] ?? '-' }}
+                                            @elseif($row->duplicate_in_file)
+                                                مكرر في نفس الملف
                                             @endif
                                         </td>
                                         <td>
@@ -240,9 +248,14 @@
                     </div>
                 </div>
                 <div class="card-footer">
+                    <p class="text-muted small mb-2 @if($allDecisionsMade ?? true) d-none @endif" id="pending-decisions-msg">
+                        <i class="fa-solid fa-info-circle me-1"></i>
+                        يجب الموافقة أو الرفض على جميع السجلات المكررة قبل تنفيذ الاستيراد
+                    </p>
                     <form method="POST" action="{{ route('dashboard.import.finalize', $batch->uuid) }}" id="finalize-form">
                         @csrf
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary" id="finalize-btn"
+                            @if(!($allDecisionsMade ?? true)) disabled @endif>
                             <i class="fa-solid fa-check-circle me-1"></i>
                             تنفيذ الاستيراد
                         </button>
@@ -296,19 +309,18 @@
                     const $btn = $(this);
                     const rowId = $btn.data('row-id');
                     const decision = $btn.data('decision');
-                    const batchUuid = '{{ isset($batch) ? $batch->uuid : '' }}';
 
                     $btn.prop('disabled', true);
 
                     $.ajax({
-                        url: `/import-excel/update-decision/${batchUuid}`,
+                        url: '{{ isset($batch) && $batch ? route("dashboard.import.update-decision", $batch->uuid) : "" }}',
                         method: 'POST',
                         data: {
                             _token: '{{ csrf_token() }}',
                             row_id: rowId,
                             decision: decision
                         },
-                        success: function() {
+                        success: function(res) {
                             const $row = $btn.closest('tr');
                             $row.find('.decision-btn').prop('disabled', false);
                             $btn.prop('disabled', true);
@@ -318,6 +330,11 @@
                                 : '<span class="badge bg-secondary mt-1">مرفوض</span>';
                             $row.find('td:last-child .badge').remove();
                             $row.find('td:last-child').append(badge);
+
+                            if (res.all_decisions_made) {
+                                $('#finalize-btn').prop('disabled', false);
+                                $('#pending-decisions-msg').addClass('d-none');
+                            }
 
                             toastr.success('تم تحديث القرار');
                         },

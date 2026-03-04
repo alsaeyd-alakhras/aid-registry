@@ -215,6 +215,28 @@ class AidDistributionImportService
             }
         }
 
+        if (in_array($maritalStatus, ['married', 'polygamous'], true)) {
+            if (!empty($spouses)) {
+                if (empty($spouses[0]['full_name']) || empty($spouses[0]['national_id'])) {
+                    $errors[] = 'اسم الزوجة الأولى ورقم هويتها إجباريان عند اختيار متزوج/ة';
+                }
+                if ($nationalId !== null && ($spouses[0]['national_id'] ?? null) === $nationalId) {
+                    $errors[] = 'رقم هوية الزوجة الأولى لا يمكن أن يكون نفس رقم الهوية الأساسي';
+                }
+                if ($maritalStatus === 'polygamous' && count($spouses) >= 2) {
+                    if (empty($spouses[1]['full_name']) || empty($spouses[1]['national_id'])) {
+                        $errors[] = 'اسم الزوجة الثانية ورقم هويتها إجباريان عند اختيار متعدد الزوجات';
+                    }
+                }
+            }
+            if ($maritalStatus === 'married' && empty($spouses)) {
+                $errors[] = 'يجب إدخال بيانات الزوجة الأولى عند اختيار متزوج/ة';
+            }
+            if ($maritalStatus === 'polygamous' && count($spouses) < 2) {
+                $errors[] = 'يجب إدخال زوجتين على الأقل عند اختيار متعدد الزوجات';
+            }
+        }
+
         if (!in_array($maritalStatus, ['married', 'polygamous'], true)) {
             $spouses = [];
         }
@@ -294,20 +316,34 @@ class AidDistributionImportService
 
         foreach ($normalizedRows as $normalized) {
             $key = $normalized['key'];
-            $nationalId = $normalized['payload']['national_id'];
-            $distributedAt = $normalized['payload']['distributed_at'];
+            $payload = $normalized['payload'];
+            $nationalId = $payload['national_id'];
+            $distributedAt = $payload['distributed_at'];
             $month = $distributedAt->format('Y-m');
 
-            $inFile = isset($seenInFile[$key]);
-            if ($inFile) {
-                if (!isset($duplicates[$key])) {
-                    $duplicates[$key] = ['in_file' => false, 'in_db' => false, 'details' => []];
-                }
-                $duplicates[$key]['in_file'] = true;
-            }
-            $seenInFile[$key] = true;
+            $allNationalIds = $this->collectNationalIdsForRow($payload);
 
-            $inDb = $this->checkDuplicateInDb($nationalId, $month);
+            foreach ($allNationalIds as $nid) {
+                $identityKey = $nid . '|' . $month;
+                if (isset($seenInFile[$identityKey])) {
+                    foreach ($seenInFile[$identityKey] as $prevKey) {
+                        if (!isset($duplicates[$prevKey])) {
+                            $duplicates[$prevKey] = ['in_file' => false, 'in_db' => false, 'details' => []];
+                        }
+                        $duplicates[$prevKey]['in_file'] = true;
+                    }
+                    if (!isset($duplicates[$key])) {
+                        $duplicates[$key] = ['in_file' => false, 'in_db' => false, 'details' => []];
+                    }
+                    $duplicates[$key]['in_file'] = true;
+                }
+                if (!isset($seenInFile[$identityKey])) {
+                    $seenInFile[$identityKey] = [];
+                }
+                $seenInFile[$identityKey][] = $key;
+            }
+
+            $inDb = $this->checkDuplicateByNationalIds($allNationalIds, $month);
             if ($inDb) {
                 if (!isset($duplicates[$key])) {
                     $duplicates[$key] = ['in_file' => false, 'in_db' => false, 'details' => []];
@@ -320,34 +356,82 @@ class AidDistributionImportService
         return $duplicates;
     }
 
-    private function checkDuplicateInDb(string $nationalId, string $month): ?array
+    private function collectNationalIdsForRow(array $payload): array
     {
+        $ids = [];
+        $primary = $payload['national_id'] ?? null;
+        if ($primary !== null && $primary !== '') {
+            $ids[] = $primary;
+        }
+        $spouses = $payload['spouses'] ?? [];
+        foreach ($spouses as $spouse) {
+            $nid = $spouse['national_id'] ?? null;
+            if ($nid !== null && $nid !== '' && !in_array($nid, $ids, true)) {
+                $ids[] = $nid;
+            }
+        }
+        return $ids;
+    }
+
+    private function checkDuplicateByNationalIds(array $nationalIds, string $month): ?array
+    {
+        $nationalIds = array_filter(array_unique($nationalIds));
+        if (empty($nationalIds)) {
+            return null;
+        }
+
         $startOfMonth = Carbon::parse($month . '-01')->startOfMonth();
         $endOfMonth = Carbon::parse($month . '-01')->endOfMonth();
 
         $existingDistribution = AidDistribution::query()
-            ->whereHas('family', function ($q) use ($nationalId) {
-                $q->where('national_id', $nationalId)
-                    ->orWhere('wife_1_national_id_gen', $nationalId)
-                    ->orWhere('wife_2_national_id_gen', $nationalId)
-                    ->orWhere('wife_3_national_id_gen', $nationalId)
-                    ->orWhere('wife_4_national_id_gen', $nationalId)
-                    ->orWhere('spouse_national_id', $nationalId);
+            ->whereHas('family', function ($q) use ($nationalIds) {
+                $q->where(function ($sub) use ($nationalIds) {
+                    $sub->whereIn('national_id', $nationalIds)
+                        ->orWhereIn('wife_1_national_id_gen', $nationalIds)
+                        ->orWhereIn('wife_2_national_id_gen', $nationalIds)
+                        ->orWhereIn('wife_3_national_id_gen', $nationalIds)
+                        ->orWhereIn('wife_4_national_id_gen', $nationalIds)
+                        ->orWhereIn('spouse_national_id', $nationalIds);
+                });
             })
             ->whereBetween('distributed_at', [$startOfMonth, $endOfMonth])
-            ->where('status', 'active')
             ->with(['family', 'office'])
+            ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
             ->first();
 
-        if ($existingDistribution) {
-            return [
-                'family_name' => $existingDistribution->family?->full_name ?? '-',
-                'office_name' => $existingDistribution->office?->name ?? '-',
-                'distributed_at' => $existingDistribution->distributed_at?->format('Y-m-d') ?? '-',
-            ];
+        if (!$existingDistribution) {
+            return null;
         }
 
-        return null;
+        $family = $existingDistribution->family;
+        $primaryId = $family?->national_id ?? null;
+        $wifeIds = array_filter([
+            $family?->wife_1_national_id_gen ?? null,
+            $family?->wife_2_national_id_gen ?? null,
+            $family?->wife_3_national_id_gen ?? null,
+            $family?->wife_4_national_id_gen ?? null,
+            $family?->spouse_national_id ?? null,
+        ]);
+
+        $rowPrimary = $nationalIds[0] ?? null;
+        if ($primaryId && in_array($primaryId, $nationalIds, true)) {
+            $matchedAs = 'primary';
+        } elseif ($rowPrimary && in_array($rowPrimary, $wifeIds, true)) {
+            $matchedAs = 'wife_as_primary';
+        } else {
+            $matchedAs = 'wife_in_spouses';
+        }
+
+        $statusLabel = $existingDistribution->status === 'active' ? 'مصروف' : 'ملغي';
+
+        return [
+            'family_name' => $family?->full_name ?? '-',
+            'office_name' => $existingDistribution->office?->name ?? '-',
+            'distributed_at' => $existingDistribution->distributed_at?->format('Y-m-d') ?? '-',
+            'matched_as' => $matchedAs,
+            'status' => $existingDistribution->status ?? 'active',
+            'status_label' => $statusLabel,
+        ];
     }
 
     private function validateProjectConstraints(array $normalizedRows): array

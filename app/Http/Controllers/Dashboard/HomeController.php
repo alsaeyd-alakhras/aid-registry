@@ -65,6 +65,7 @@ class HomeController extends Controller
         $batchUuid = $request->query('batch');
         $batch = null;
 
+        $allDecisionsMade = true;
         if ($batchUuid) {
             $batch = AidDistributionImportBatch::query()
                 ->where('uuid', $batchUuid)
@@ -75,9 +76,12 @@ class HomeController extends Controller
                     })->orderBy('row_number');
                 }])
                 ->first();
+            if ($batch) {
+                $allDecisionsMade = $batch->rows()->where('decision', 'pending')->count() === 0;
+            }
         }
 
-        return view('dashboard.import', compact('batch'));
+        return view('dashboard.import', compact('batch', 'allDecisionsMade'));
     }
 
     public function import_excel(Request $request, AidDistributionImportService $importService)
@@ -139,6 +143,12 @@ class HomeController extends Controller
                 ->with('warning', 'هذه الدفعة تم معالجتها مسبقاً أو تم إلغاؤها');
         }
 
+        $pendingCount = $batch->rows()->where('decision', 'pending')->count();
+        if ($pendingCount > 0) {
+            return redirect()->route('dashboard.import', ['batch' => $uuid])
+                ->with('danger', 'يجب الموافقة أو الرفض على جميع السجلات المكررة قبل تنفيذ الاستيراد');
+        }
+
         try {
             $result = $importService->finalizeImport($batch, $consumptionService);
 
@@ -174,7 +184,9 @@ class HomeController extends Controller
             'decision' => $validated['decision'],
         ]);
 
-        return response()->json(['success' => true]);
+        $allDecisionsMade = $batch->rows()->where('decision', 'pending')->count() === 0;
+
+        return response()->json(['success' => true, 'all_decisions_made' => $allDecisionsMade]);
     }
 
 }
