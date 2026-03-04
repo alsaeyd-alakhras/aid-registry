@@ -470,7 +470,8 @@ class ProjectController extends Controller
                 ->where('id', $includeProjectId)
                 ->where('institution_id', $institutionId)
                 ->first();
-            if ($includedProject && ($includedProject->status ?? 'active') === 'closed') {
+            if ($includedProject) {
+                $isClosed = ($includedProject->status ?? 'active') === 'closed';
                 $result[] = [
                     'id' => $includedProject->id,
                     'project_number' => $includedProject->project_number,
@@ -484,7 +485,7 @@ class ProjectController extends Controller
                     'total_quantity' => (float) $includedProject->total_quantity,
                     'beneficiaries_total' => (int) $includedProject->beneficiaries_total,
                     'by_office' => false,
-                    'is_closed' => true,
+                    'is_closed' => $isClosed,
                 ];
             }
         }
