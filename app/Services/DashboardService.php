@@ -195,8 +195,9 @@ class DashboardService
                 ->orderByDesc('id');
 
             return [
-                'items' => $query->forPage($page, self::TABLE_PER_PAGE)->get(),
-                'total' => (int) $query->toBase()->getCountForPagination(),
+                // 'items' => $query->forPage($page, self::TABLE_PER_PAGE)->get(),
+                'items' => $query->limit(20)->get(),
+                'total' => 20,
             ];
         });
 

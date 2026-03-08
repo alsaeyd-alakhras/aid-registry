@@ -257,16 +257,6 @@
         </div>
     </div>
 
-    <div class="mb-4 card section-card">
-        <div class="py-3 card-header d-flex justify-content-between align-items-center">
-            <h6 class="mb-0">Monthly Distribution Overview</h6>
-            <span class="text-muted small">{{ $year }}</span>
-        </div>
-        <div class="card-body">
-            <canvas id="monthlyOverviewChart" height="90"></canvas>
-        </div>
-    </div>
-
     <div class="row g-3">
         <div class="col-lg-7">
             <div class="card section-card h-100">
@@ -456,6 +446,16 @@
         </div>
         <div class="pt-3 bg-white card-footer">
             {{ $recentDistributions->appends(request()->except('recent_page'))->links() }}
+        </div>
+    </div>
+
+    <div class="mt-4 card section-card">
+        <div class="py-3 card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Monthly Distribution Overview</h6>
+            <span class="text-muted small">{{ $year }}</span>
+        </div>
+        <div class="card-body">
+            <canvas id="monthlyOverviewChart" height="90"></canvas>
         </div>
     </div>
 
