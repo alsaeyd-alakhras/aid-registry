@@ -205,6 +205,7 @@
         <input type="hidden" name="column_filters" id="export-column_filters">
         <input type="hidden" name="project_id" id="export-project_id">
         <input type="hidden" name="office_id" id="export-office_id">
+        <input type="hidden" name="family_id" id="export-family_id">
     </form>
 
     <div class="modal fade delete-modal" id="deleteConfirmModal" tabindex="-1"
@@ -253,6 +254,11 @@
 
 
         <script>
+            $(document).ready(function() {
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('from_date')) $('#from_date').val(urlParams.get('from_date'));
+                if (urlParams.has('to_date')) $('#to_date').val(urlParams.get('to_date'));
+            });
             const tableId = 'aid-distributions-table';
             const arabicFileJson = "{{ asset('files/Arabic.json') }}";
             const _token = "{{ csrf_token() }}";
@@ -399,6 +405,7 @@
                 let urlParams = new URLSearchParams(window.location.search);
                 form.find('#export-project_id').val(urlParams.get('project_id') || '');
                 form.find('#export-office_id').val(urlParams.get('office_id') || '');
+                form.find('#export-family_id').val(urlParams.get('family_id') || '');
                 form.submit();
             });
         </script>

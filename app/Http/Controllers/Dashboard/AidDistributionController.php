@@ -57,6 +57,9 @@ class AidDistributionController extends Controller
             if ($office_id) {
                 $distributions->where('office_id', $office_id);
             }
+            if ($request->family_id) {
+                $distributions->where('family_id', $request->family_id);
+            }
 
             $this->applySort($distributions, $request->sort_column, $request->sort_direction);
 
@@ -135,6 +138,9 @@ class AidDistributionController extends Controller
         }
         if ($office_id) {
             $distributions->where('office_id', $office_id);
+        }
+        if ($request->family_id) {
+            $distributions->where('family_id', $request->family_id);
         }
 
         $rows = $distributions->get()->map(function (AidDistribution $distribution) {
@@ -299,6 +305,9 @@ class AidDistributionController extends Controller
         }
         if ($officeId) {
             $query->where('office_id', $officeId);
+        }
+        if ($request->family_id) {
+            $query->where('family_id', $request->family_id);
         }
 
         if ($request->active_filters) {

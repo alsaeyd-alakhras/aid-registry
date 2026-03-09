@@ -81,6 +81,7 @@ Route::group([
         Route::get('institutions/{institutionId}/projects', [ProjectController::class, 'getProjectsByInstitution'])->name('institutions.projects');
         Route::get('projects/{projectId}/stats', [ProjectController::class, 'getProjectStats'])->name('projects.stats');
         Route::get('projects/{projectId}/breakdown', [ProjectController::class, 'getProjectBreakdown'])->name('projects.breakdown');
+        Route::get('projects/{projectId}/repeaters', [ProjectController::class, 'getProjectRepeaters'])->name('projects.repeaters');
     });
 
     Route::post('api/projects/{projectId}/allocations/{allocationId}/upload-receipt', [ProjectController::class, 'uploadReceipt'])->name('projects.allocations.upload-receipt');

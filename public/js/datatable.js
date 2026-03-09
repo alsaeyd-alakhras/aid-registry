@@ -157,6 +157,7 @@ $(document).ready(function () {
                 const urlParams = new URLSearchParams(window.location.search);
                 if (urlParams.has('project_id')) d.project_id = urlParams.get('project_id');
                 if (urlParams.has('office_id')) d.office_id = urlParams.get('office_id');
+                if (urlParams.has('family_id')) d.family_id = urlParams.get('family_id');
             },
             dataSrc: function(json) {
                 // تحديث مجاميع tfoot
@@ -385,6 +386,7 @@ $(document).ready(function () {
         if ($("#year").length) ajaxData.year = $("#year").val();
         if (urlParams.has('project_id')) ajaxData.project_id = urlParams.get('project_id');
         if (urlParams.has('office_id')) ajaxData.office_id = urlParams.get('office_id');
+        if (urlParams.has('family_id')) ajaxData.family_id = urlParams.get('family_id');
 
         $.ajax({
             url: urlFilters.replace(":column", columnName),

@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Dashboard;
 use App\Http\Controllers\Controller;
 use App\Models\AidDistribution;
 use App\Models\AidItem;
+use App\Models\Family;
 use App\Models\Institution;
 use App\Models\Office;
 use App\Models\Project;
 use App\Models\ProjectOfficeAllocation;
 use App\Models\ProjectStat;
 use App\Services\ProjectNumberService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -615,6 +617,21 @@ class ProjectController extends Controller
 
         $consumptionByOffice = $consumptionQuery->get()->keyBy('office_id');
 
+        // عدد المكررين لكل مكتب (كل الوقت)
+        $repeatersSub = AidDistribution::query()
+            ->where('project_id', $projectId)
+            ->where('status', 'active')
+            ->selectRaw('office_id, family_id, COUNT(*) as cnt')
+            ->groupBy('office_id', 'family_id')
+            ->havingRaw('COUNT(*) > 1');
+
+        $repeatersByOffice = DB::table(DB::raw('(' . $repeatersSub->toSql() . ') as sub'))
+            ->mergeBindings($repeatersSub->getQuery())
+            ->selectRaw('office_id, COUNT(*) as repeaters_count')
+            ->groupBy('office_id')
+            ->get()
+            ->keyBy('office_id');
+
         // بناء الصفوف: فقط المكاتب المعتمدة (أو مكتب الموظف)
         $breakdown = collect();
         $officeIdsToShow = $employeeOfficeId ? [$employeeOfficeId] : $officeIdsWithAllocation;
@@ -640,6 +657,7 @@ class ProjectController extends Controller
                 'received' => (bool) ($alloc->received ?? false),
                 'receipt_file_path' => $alloc->receipt_file_path,
                 'receipt_url' => $receiptUrl,
+                'repeaters_count' => (int) ($repeatersByOffice->get($oid)?->repeaters_count ?? 0),
             ]);
         }
 
@@ -654,6 +672,58 @@ class ProjectController extends Controller
                 'offices_balance_quantity' => $officesBalanceQuantity,
             ],
             'breakdown' => $breakdown,
+        ]);
+    }
+
+    public function getProjectRepeaters(Request $request, int $projectId)
+    {
+        $this->authorize('view', Project::class);
+
+        $user = Auth::user();
+        $employeeOfficeId = ($user && $user->user_type === 'employee') ? (int) $user->office_id : null;
+        $officeId = $request->query('office_id') ? (int) $request->query('office_id') : $employeeOfficeId;
+        $fromDate = $request->query('from_date');
+        $toDate = $request->query('to_date');
+
+        $subQuery = AidDistribution::query()
+            ->where('project_id', $projectId)
+            ->where('status', 'active')
+            ->when($officeId, fn ($q) => $q->where('office_id', $officeId))
+            ->when($fromDate, fn ($q) => $q->whereDate('distributed_at', '>=', $fromDate))
+            ->when($toDate, fn ($q) => $q->whereDate('distributed_at', '<=', $toDate))
+            ->selectRaw('family_id, COUNT(*) as repeat_count')
+            ->selectRaw("SUM(CASE WHEN aid_mode = 'cash' THEN COALESCE(cash_amount, 0) ELSE 0 END) as total_cash")
+            ->selectRaw("SUM(CASE WHEN aid_mode = 'in_kind' THEN COALESCE(quantity, 0) ELSE 0 END) as total_quantity")
+            ->selectRaw('MAX(distributed_at) as last_distributed_at')
+            ->groupBy('family_id')
+            ->havingRaw('COUNT(*) > 1');
+
+        $repeatersData = DB::table(DB::raw('(' . $subQuery->toSql() . ') as sub'))
+            ->mergeBindings($subQuery->getQuery())
+            ->get();
+
+        $familyIds = $repeatersData->pluck('family_id')->unique()->filter()->values()->all();
+        $families = Family::query()->whereIn('id', $familyIds)->get()->keyBy('id');
+
+        $repeaters = $repeatersData->map(function ($row) use ($families) {
+            $family = $families->get($row->family_id);
+
+            return [
+                'family_id' => (int) $row->family_id,
+                'full_name' => $family?->full_name ?? '-',
+                'repeat_count' => (int) $row->repeat_count,
+                'total_cash' => (float) ($row->total_cash ?? 0),
+                'total_quantity' => (float) ($row->total_quantity ?? 0),
+                'last_distributed_at' => $row->last_distributed_at ? Carbon::parse($row->last_distributed_at)->format('Y-m-d') : null,
+            ];
+        })->values();
+
+        $project = Project::find($projectId);
+
+        return response()->json([
+            'count' => $repeaters->count(),
+            'repeaters' => $repeaters,
+            'project_type' => $project?->project_type ?? 'cash',
         ]);
     }
 

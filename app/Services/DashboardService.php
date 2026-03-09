@@ -314,12 +314,14 @@ class DashboardService
                 ->get()
                 ->keyBy('project_id');
 
+            $repeatersByProject = $this->getRepeatersCountByProject(null);
+
             return ProjectStat::query()
                 ->with(['institution', 'aidItem'])
                 ->orderBy('project_number')
                 ->get()
-                ->map(function (ProjectStat $project) use ($allocationsByProject, $receiptsByProject, $totalOfficesByProject) {
-                    return $this->mapProjectStatToRow($project, $allocationsByProject, $receiptsByProject, $totalOfficesByProject);
+                ->map(function (ProjectStat $project) use ($allocationsByProject, $receiptsByProject, $totalOfficesByProject, $repeatersByProject) {
+                    return $this->mapProjectStatToRow($project, $allocationsByProject, $receiptsByProject, $totalOfficesByProject, $repeatersByProject);
                 });
         });
 
@@ -349,7 +351,9 @@ class DashboardService
             ->get()
             ->keyBy('project_id');
 
-        return $allocations->map(function ($allocation) use ($consumed) {
+        $repeatersByProject = $this->getRepeatersCountByProject($officeId);
+
+        return $allocations->map(function ($allocation) use ($consumed, $repeatersByProject) {
             $project = $allocation->project;
             if (!$project) {
                 return null;
@@ -385,11 +389,30 @@ class DashboardService
                 'remaining_beneficiaries' => $maxBeneficiaries - $beneficiariesConsumed,
                 'allocation_id' => $allocation->id,
                 'has_receipt' => !empty($allocation->receipt_file_path),
+                'repeaters_count' => (int) ($repeatersByProject->get($project->id)?->repeaters_count ?? 0),
             ];
         })->filter()->values();
     }
 
-    private function mapProjectStatToRow(ProjectStat $project, ?Collection $allocationsByProject = null, ?Collection $receiptsByProject = null, ?Collection $totalOfficesByProject = null): array
+    private function getRepeatersCountByProject(?int $officeId): Collection
+    {
+        $sub = AidDistribution::query()
+            ->where('status', 'active')
+            ->whereNotNull('project_id')
+            ->when($officeId, fn ($q) => $q->where('office_id', $officeId))
+            ->selectRaw('project_id, family_id, COUNT(*) as cnt')
+            ->groupBy('project_id', 'family_id')
+            ->havingRaw('COUNT(*) > 1');
+
+        $baseQuery = DB::table(DB::raw('(' . $sub->toSql() . ') as sub'))
+            ->mergeBindings($sub->getQuery())
+            ->selectRaw('project_id, COUNT(*) as repeaters_count')
+            ->groupBy('project_id');
+
+        return $baseQuery->get()->keyBy('project_id');
+    }
+
+    private function mapProjectStatToRow(ProjectStat $project, ?Collection $allocationsByProject = null, ?Collection $receiptsByProject = null, ?Collection $totalOfficesByProject = null, ?Collection $repeatersByProject = null): array
     {
         $row = [
             'id' => $project->id,
@@ -409,6 +432,7 @@ class DashboardService
             'beneficiaries_total' => (int) $project->beneficiaries_total,
             'beneficiaries_consumed' => (int) $project->beneficiaries_consumed,
             'remaining_beneficiaries' => (int) $project->remaining_beneficiaries,
+            'repeaters_count' => (int) ($repeatersByProject?->get($project->id)?->repeaters_count ?? 0),
         ];
 
         if ($receiptsByProject !== null && $totalOfficesByProject !== null) {

@@ -145,6 +145,7 @@
                                 <th>رفع</th>
                             @endif
                             <th>المستفيدين</th>
+                            <th>المكررين</th>
                             <th>تفاصيل</th>
                         </tr>
                     </thead>
@@ -219,6 +220,16 @@
                                     <span class="badge bg-success">{{ $project['remaining_beneficiaries'] }}</span>
                                 </td>
                                 <td>
+                                    @php $repeatersCount = (int) ($project['repeaters_count'] ?? 0); @endphp
+                                    @if($repeatersCount > 0)
+                                        <span class="view-repeaters-btn text-primary text-decoration-underline" role="button" style="cursor: pointer;"
+                                            data-project-id="{{ $project['id'] }}" data-project-name="{{ e($project['name']) }}" data-office-id=""
+                                            title="عرض المكررين">{{ $repeatersCount }}</span>
+                                    @else
+                                        <span class="text-muted">0</span>
+                                    @endif
+                                </td>
+                                <td>
                                     <div class="d-flex align-items-center gap-1">
                                         <button type="button" class="btn btn-sm btn-outline-primary view-project-breakdown-btn"
                                             data-project-id="{{ $project['id'] }}" title="تفاصيل الصرف">
@@ -245,7 +256,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ ($showStorageOfficesBalance ?? false) ? 13 : 10 }}" class="py-4 text-center text-muted">لا توجد مشاريع لعرضها</td>
+                                <td colspan="{{ ($showStorageOfficesBalance ?? false) ? 14 : 11 }}" class="py-4 text-center text-muted">لا توجد مشاريع لعرضها</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -494,11 +505,78 @@
                                     <th>المعتمد للمكتب</th>
                                     <th>عدد المستفيدين</th>
                                     <th>عدد المساعدات</th>
+                                    <th>المكررين</th>
                                     <th>المبلغ/الكمية</th>
                                     <th>كشف الإستلام</th>
                                 </tr>
                             </thead>
                             <tbody id="breakdown-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إغلاق</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="repeatersModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title d-flex flex-wrap align-items-center gap-2">
+                        <span>المكررين</span>
+                        <span class="text-muted">—</span>
+                        <span id="repeaters-modal-project-name"></span>
+                        <span id="repeaters-modal-office-badge" class="badge bg-label-info align-middle" style="display: none;"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="repeaters-modal-project-id" value="">
+                    <input type="hidden" id="repeaters-modal-office-id" value="">
+                    <div class="mb-3 p-3 rounded-3" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+                            <label class="form-check form-check-inline mb-0">
+                                <input type="radio" name="repeaters-period" value="all" class="form-check-input" checked>
+                                <span class="form-check-label"><i class="fa-solid fa-infinity text-muted me-1"></i>عرض الكل</span>
+                            </label>
+                            <label class="form-check form-check-inline mb-0">
+                                <input type="radio" name="repeaters-period" value="range" class="form-check-input">
+                                <span class="form-check-label"><i class="fa-solid fa-calendar-days text-muted me-1"></i>تحديد مدة</span>
+                            </label>
+                        </div>
+                        <div id="repeaters-date-range" class="d-none mt-2 pt-2" style="border-top: 1px dashed #cbd5e1;">
+                            <div class="d-flex flex-wrap align-items-end gap-2">
+                                <div class="flex-grow-1" style="min-width: 140px;">
+                                    <label class="form-label small text-muted mb-1">من تاريخ</label>
+                                    <input type="date" id="repeaters-from-date" class="form-control form-control-sm">
+                                </div>
+                                <div class="align-self-center text-muted small px-1">—</div>
+                                <div class="flex-grow-1" style="min-width: 140px;">
+                                    <label class="form-label small text-muted mb-1">إلى تاريخ</label>
+                                    <input type="date" id="repeaters-to-date" class="form-control form-control-sm">
+                                </div>
+                                <button type="button" class="btn btn-sm btn-primary" id="repeaters-apply-dates">
+                                    <i class="fa-solid fa-filter me-1"></i>تطبيق
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>الاسم</th>
+                                    <th>عدد المرات</th>
+                                    <th>المبلغ (₪)</th>
+                                    <th>الكمية</th>
+                                    <th>آخر عملية</th>
+                                </tr>
+                            </thead>
+                            <tbody id="repeaters-table-body">
                             </tbody>
                         </table>
                     </div>
@@ -705,7 +783,7 @@
                         $tbody.empty();
 
                         if (response.breakdown.length === 0) {
-                            $tbody.append('<tr><td colspan="6" class="text-center text-muted">لا توجد عمليات صرف لهذا المشروع</td></tr>');
+                            $tbody.append('<tr><td colspan="7" class="text-center text-muted">لا توجد عمليات صرف لهذا المشروع</td></tr>');
                         } else {
                             response.breakdown.forEach(function (item) {
                                 const allocatedDisplay = response.project.project_type === 'cash'
@@ -720,6 +798,12 @@
                                     ? `<a href="${aidCountUrl}" class="text-primary text-decoration-none">${item.aid_count}</a>`
                                     : item.aid_count;
 
+                                const repeatersCount = item.repeaters_count || 0;
+                                const officeNameEsc = (item.office_name || '').replace(/"/g, '&quot;');
+                                const repeatersCell = repeatersCount > 0
+                                    ? `<span class="view-repeaters-btn text-primary text-decoration-underline" role="button" style="cursor: pointer;" data-project-id="${projectId}" data-project-name="${response.project.name}" data-office-id="${item.office_id || ''}" data-office-name="${officeNameEsc}">${repeatersCount}</span>`
+                                    : repeatersCount;
+
                                 const receiptCell = item.receipt_url
                                     ? `<a href="${item.receipt_url}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-file-pdf me-1"></i>عرض</a>`
                                     : '<span class="text-muted small">المكتب مش مسلم نهائي الملف</span>';
@@ -730,6 +814,7 @@
                                         <td>${allocatedDisplay}</td>
                                         <td>${item.beneficiaries}</td>
                                         <td>${aidCountCell}</td>
+                                        <td>${repeatersCell}</td>
                                         <td>${valueDisplay}</td>
                                         <td>${receiptCell}</td>
                                     </tr>
@@ -737,12 +822,136 @@
                             });
                         }
 
+                        $('#projectBreakdownModal .view-repeaters-btn').off('click').on('click', function () {
+                            const projectId = $(this).data('project-id');
+                            const projectName = $(this).data('project-name');
+                            const officeId = $(this).data('office-id') || null;
+                            const officeName = $(this).data('office-name') || '';
+                            const breakdownModal = document.getElementById('projectBreakdownModal');
+                            const bsModal = bootstrap.Modal.getInstance(breakdownModal);
+                            $(breakdownModal).one('hidden.bs.modal', function () {
+                                setTimeout(function () {
+                                    openRepeatersModal(projectId, projectName, officeId, officeName);
+                                }, 50);
+                            });
+                            bsModal.hide();
+                        });
+
                         new bootstrap.Modal(document.getElementById('projectBreakdownModal')).show();
                     },
                     error: function () {
                         toastr.error('فشل تحميل تفاصيل المشروع');
                     }
                 });
+            });
+
+            const aidDistributionsIndexUrl = @json(route('dashboard.aid-distributions.index'));
+
+            function openRepeatersModal(projectId, projectName, officeId, officeName) {
+                $('#repeaters-modal-project-name').text(projectName || '');
+                const $officeBadge = $('#repeaters-modal-office-badge');
+                if (officeName) {
+                    $officeBadge.text('مكتب: ' + officeName).show();
+                } else {
+                    $officeBadge.hide();
+                }
+                $('#repeaters-modal-project-id').val(projectId);
+                $('#repeaters-modal-office-id').val(officeId || '');
+                $('input[name="repeaters-period"][value="all"]').prop('checked', true);
+                $('#repeaters-date-range').addClass('d-none');
+                $('#repeaters-from-date, #repeaters-to-date').val('');
+                loadRepeatersData(projectId, officeId, null, null);
+                const repeatersModalEl = document.getElementById('repeatersModal');
+                $(repeatersModalEl).off('hidden.bs.modal.repeatersCleanup').on('hidden.bs.modal.repeatersCleanup', function () {
+                    if (!$('.modal.show').length) {
+                        $('body').removeClass('modal-open').css('padding-right', '');
+                        $('.modal-backdrop').remove();
+                    }
+                });
+                new bootstrap.Modal(repeatersModalEl).show();
+            }
+
+            function loadRepeatersData(projectId, officeId, fromDate, toDate) {
+                let url = `/api/projects/${projectId}/repeaters`;
+                const params = [];
+                if (officeId) params.push('office_id=' + officeId);
+                if (fromDate) params.push('from_date=' + fromDate);
+                if (toDate) params.push('to_date=' + toDate);
+                if (params.length) url += '?' + params.join('&');
+
+                $.ajax({
+                    url: url,
+                    method: 'GET',
+                    success: function (response) {
+                        const $tbody = $('#repeaters-table-body');
+                        $tbody.empty();
+                        if (response.repeaters.length === 0) {
+                            $tbody.append('<tr><td colspan="5" class="text-center text-muted">لا يوجد مكررين</td></tr>');
+                        } else {
+                            response.repeaters.forEach(function (r) {
+                                const cashDisplay = parseFloat(r.total_cash || 0).toFixed(2) + ' ₪';
+                                const qtyDisplay = parseFloat(r.total_quantity || 0).toFixed(2);
+                                const recordUrl = aidDistributionsIndexUrl + '?project_id=' + projectId + '&family_id=' + r.family_id
+                                    + (fromDate ? '&from_date=' + fromDate : '')
+                                    + (toDate ? '&to_date=' + toDate : '');
+                                $tbody.append(`
+                                    <tr>
+                                        <td>${r.full_name || '-'}</td>
+                                        <td><a href="${recordUrl}" class="text-primary text-decoration-none">${r.repeat_count}</a></td>
+                                        <td>${cashDisplay}</td>
+                                        <td>${qtyDisplay}</td>
+                                        <td>${r.last_distributed_at || '-'}</td>
+                                    </tr>
+                                `);
+                            });
+                        }
+                    },
+                    error: function () {
+                        toastr.error('فشل تحميل المكررين');
+                        $('#repeaters-table-body').html('<tr><td colspan="5" class="text-center text-danger">فشل التحميل</td></tr>');
+                    }
+                });
+            }
+
+            $(document).on('click', '.view-repeaters-btn', function () {
+                openRepeatersModal(
+                    $(this).data('project-id'),
+                    $(this).data('project-name'),
+                    $(this).data('office-id') || null,
+                    $(this).data('office-name') || ''
+                );
+            });
+
+            $('input[name="repeaters-period"]').on('change', function () {
+                const val = $(this).val();
+                if (val === 'range') {
+                    $('#repeaters-date-range').removeClass('d-none');
+                } else {
+                    $('#repeaters-date-range').addClass('d-none');
+                    const projectId = $('#repeaters-modal-project-id').val();
+                    const officeId = $('#repeaters-modal-office-id').val() || null;
+                    if (projectId) loadRepeatersData(projectId, officeId, null, null);
+                }
+            });
+
+            function applyRepeatersDateFilter() {
+                const projectId = $('#repeaters-modal-project-id').val();
+                const officeId = $('#repeaters-modal-office-id').val() || null;
+                const fromDate = $('#repeaters-from-date').val();
+                const toDate = $('#repeaters-to-date').val();
+                if (projectId && fromDate && toDate) {
+                    loadRepeatersData(projectId, officeId, fromDate, toDate);
+                } else if (projectId && (fromDate || toDate)) {
+                    toastr.warning('يرجى اختيار تاريخ البداية والنهاية');
+                }
+            }
+
+            $('#repeaters-apply-dates').on('click', applyRepeatersDateFilter);
+
+            $('#repeaters-from-date, #repeaters-to-date').on('change', function () {
+                if ($('#repeaters-from-date').val() && $('#repeaters-to-date').val()) {
+                    applyRepeatersDateFilter();
+                }
             });
         </script>
     @endpush
