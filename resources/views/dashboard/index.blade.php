@@ -604,6 +604,10 @@
                             <label class="form-label">الملف (PDF, Excel, صور)</label>
                             <input type="file" class="form-control" id="receipt_file" name="receipt_file"
                                 accept=".pdf,.xlsx,.xls,.jpg,.jpeg,.png,.gif,.webp">
+                            <small class="text-muted d-block mt-1">
+                                <i class="fa-solid fa-circle-info me-1"></i>
+                                يتم رفع ملف واحد فقط — عند رفع ملف آخر يتم استبدال الملف القديم
+                            </small>
                         </div>
                         <div id="receipt-view-area" class="mb-2" style="display: none;">
                             <a href="#" id="receipt-view-link" target="_blank" class="btn btn-sm btn-outline-primary">
